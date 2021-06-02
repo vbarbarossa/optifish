@@ -55,11 +55,6 @@ sp_data <- readRDS('~/surfdrive/Documents/projects/fishsuit/proc/species_ranges_
 sp_data$diad <- 'f'
 sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']] <- 't'
 
-
-# assign diadromous-non diadromous category
-sp_data$diad <- 'f'
-sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']] <- 't'
-
 # Dams data ---------------------------------------------------------------------------------------------
 # reference dams here but keep all records and corresponding HYBAS
 # then later in the function filter dams based on decision vector and select unique HYBAS IDs
@@ -67,10 +62,7 @@ sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']
 dams <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
   filter(Status %in% c('E','C')) %>%
   st_transform(4326)
-
-hb <- read_sf('data/HydroBASINS/global_lev12/hybas_as_lev12_v1c.shp')
-
-dams <- st_intersection(dams,hb %>% select(HYBAS_ID)) %>% as_tibble() %>% select(-geom)
+dams <- st_intersection(dams,hb_data %>% select(HYBAS_ID)) %>% as_tibble() %>% select(-geom)
 
 source('R/functions_connectivity.R')
 # FUNCTION THAT CALCULATES CI PER MAIN BASIN ------------------------------------------------------------------
@@ -78,11 +70,11 @@ source('R/functions_connectivity.R')
 # Danube 2120008490
 
 # create fictitious sp data
-sp_data <- hb_data %>%
-  as.data.table() %>%
-  filter(MAIN_BAS == 4120017020) %>%
-  mutate(binomial = 'fragile', diad = 'f') %>%
-  select('HYBAS_ID', 'binomial', 'MAIN_BAS', 'SUB_AREA', 'MAIN_BAS_AREA', 'diad')
+# sp_data <- hb_data %>%
+#   as.data.table() %>%
+#   filter(MAIN_BAS == 4120017020) %>%
+#   mutate(binomial = 'fragile', diad = 'f') %>%
+#   select('HYBAS_ID', 'binomial', 'MAIN_BAS', 'SUB_AREA', 'MAIN_BAS_AREA', 'diad')
 
 # basin_connectivity <- function(main_bas_id){
 main_bas_id <- 4120017020
@@ -227,7 +219,7 @@ fitness <- function(x){
   # here plug in connectivity
   # totCI <- a number based on the config of the dams
   
-  return(c(-totIC,-tab$connectivity.cur))
+  return(c(-totIC,-mean(tab$connectivity.cur,na.rm=T)))
   
 }
 
