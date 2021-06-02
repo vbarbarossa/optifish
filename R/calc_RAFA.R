@@ -6,7 +6,8 @@ library(sf); library(foreach); library(rfishbase); library(data.table); library(
 
 # HydroBASINS data ------------------------------------------------------------------------------------------
 # read hydrobasins data
-hb_data <- foreach(i = c('as'),.combine = 'rbind') %do% read_sf(paste0('data/HydroBASINS/global_lev12/hybas_',i,'_lev12_v1c.shp'))
+hb_data <- read_sf('data/HydroBASINS/global_lev12/hybas_as_lev12_v1c.shp')
+
 # add basin area
 # main_bas_area <- do.call('rbind',lapply(split(hb_data_frame,hb_data_frame$MAIN_BAS),function(x) data.frame(MAIN_BAS = unique(x$MAIN_BAS),MAIN_BAS_AREA = sum(x$SUB_AREA))))
 cat('\nCompiling main basin area..')
@@ -18,47 +19,11 @@ main_bas_area <- hb_data %>%
   summarize(MAIN_BAS_AREA = sum(SUB_AREA))
 
 hb_data <- inner_join(hb_data,main_bas_area,by='MAIN_BAS') %>%
-  filter(MAIN_BAS %in% c(4120017020))#,4120023810,4120023060))
+  filter(MAIN_BAS %in% c(4120017020))
 
 # select diadromous and non-diadromous species------------------------------------------------------------
 
 cat('\nRetrieving diadromous species from fishbase..')
-
-# # load fishbase metadata
-library(rfishbase)
-fishbase <- species(fields = c('Species','AnaCat')) %>% # get species table for all species
-  rename(binomial = Species)
-#
-fishbase$AnaCat <- as.factor(fishbase$AnaCat)
-levels(fishbase$AnaCat) <- c(rep('Diad.',6),'Non.','Ocea.','Ocea.','Pota.','Pota.')
-# table(fishbase$AnaCat)
-#
-# # Species range data --------------------------------------------------------------------------------------
-#
-# cat('\nReading species data..')
-#
-sp_data <- readRDS('~/surfdrive/Documents/projects/fishsuit/proc/species_ranges_raw_on_hybas12.rds') %>%
-  inner_join(.,hb_data %>% as_tibble() %>% select(HYBAS_ID,MAIN_BAS,SUB_AREA,MAIN_BAS_AREA),by="HYBAS_ID") %>%
-  as.data.table(.)
-
-# library(vroom)
-# sp_data <- bind_rows(
-#   # read hybas12 on IUCN
-#   vroom('~/surfdrive/Documents/projects/connectfish/proc/hybas12_fish.csv',delim=','),
-#   # read hybas12 on customRanges
-#   vroom(paste0('~/surfdrive/Documents/projects/connectfish/proc/hybas12_fish_custom_ranges_occth',min_no_occ,'.csv'),delim=',')
-# ) %>%
-#   inner_join(.,hb_data %>% select(HYBAS_ID,MAIN_BAS,SUB_AREA,MAIN_BAS_AREA),by="HYBAS_ID") %>%
-#   as.data.table(.)
-
-# assign diadromous-non diadromous category
-sp_data$diad <- 'f'
-sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']] <- 't'
-
-
-# assign diadromous-non diadromous category
-sp_data$diad <- 'f'
-sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']] <- 't'
 
 # Dams data ---------------------------------------------------------------------------------------------
 # reference dams here but keep all records and corresponding HYBAS
@@ -67,10 +32,7 @@ sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']
 dams <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
   filter(Status %in% c('E','C')) %>%
   st_transform(4326)
-
-hb <- read_sf('data/HydroBASINS/global_lev12/hybas_as_lev12_v1c.shp')
-
-dams <- st_intersection(dams,hb %>% select(HYBAS_ID)) %>% as_tibble() %>% select(-geom)
+dams <- st_intersection(dams,hb_data %>% select(HYBAS_ID)) %>% as_tibble() %>% select(-geom)
 
 source('R/functions_connectivity.R')
 # FUNCTION THAT CALCULATES CI PER MAIN BASIN ------------------------------------------------------------------

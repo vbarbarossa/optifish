@@ -138,7 +138,7 @@ n <- nrow(dams)
 # <<<<<<<<<<<<<<<<<< much faster with mco, no printing time
 library(mco)
 optim <- nsga2(fn = fitness, idim = n, odim = 2, generations = 1000,
-                mprob = 0.2, popsize = 40, cprob = 0.8,
+                mprob = 0.2, popsize = 100, cprob = 0.8,
                 lower.bounds = rep(0, n), upper.bounds = rep(1, n))
 plot(optim)
 
