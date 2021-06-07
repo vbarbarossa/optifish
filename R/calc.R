@@ -1,10 +1,12 @@
 # packages needed
-library(sf); library(foreach); library(rfishbase); library(data.table); library(dplyr); 
+library(sf); library(foreach); library(rfishbase); library(data.table); library(dplyr); library(mco)
 
 # sp_ranges_file <- '~/surfdrive/Documents/projects/fishsuit/proc/species_ranges_raw_on_hybas12.rds' #local
 sp_ranges_file <- '~/data/data/species_ranges_raw_on_hybas12.rds'
 # hb_directory <- 'data/HydroBASINS/global_lev12/' #local
 hb_directory <- '~/data/data/HydroBASINS/global_lev12/'
+# dams_file <- 'data/Dams Mekong MRC and PRC.gpkg' #local
+dams_file <- '~/data/data/Mekong dams/Dams Mekong MRC and PRC.gpkg'
 
 # HydroBASINS data ------------------------------------------------------------------------------------------
 # read hydrobasins data
@@ -47,7 +49,7 @@ sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']
 # reference dams here but keep all records and corresponding HYBAS
 # then later in the function filter dams based on decision vector and select unique HYBAS IDs
 
-dams <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
+dams <- read_sf(dams_file) %>%
   filter(Status %in% c('E','C')) %>%
   st_transform(4326)
 dams <- st_intersection(dams,hb_data %>% select(HYBAS_ID)) %>% as_tibble() %>% select(-geom)
@@ -104,7 +106,7 @@ assign_group <- function(hybas_id,group){
 }
 
 fitness <- function(x){
-  nc<-8 #set no. cores
+  nc<-24 #set no. cores
   decision <- round(x,0)
   
   # installed capacity
@@ -135,8 +137,10 @@ fitness <- function(x){
   sbas_sp <- sp_data %>%
     filter(MAIN_BAS == main_bas_id)
   
+  sps <- unique(as.character(sbas_sp$binomial))
+  
   # st <- Sys.time()
-  CI <- parallel::mclapply(unique(as.character(sbas_sp$binomial)), function(sp){
+  CI <- parallel::mclapply(split(sps,cut(1:length(sps),nc,labels = F)), function(sp){
     
     occ <- sbas_sp[sbas_sp$binomial == sp,]
     occ$group_cur <- sapply(occ$HYBAS_ID,function(x) assign_group(x,groups_cur)) #<<<time consuming
@@ -167,15 +171,14 @@ fitness <- function(x){
   return(c(-totIC,-mean(CI,na.rm=T)))
 }
 
-# st <- Sys.time()
-# fitness(sample(c(0,1),56,replace = T))
-# Sys.time() - st
+st <- Sys.time()
+fitness(sample(c(0,1),56,replace = T))
+Sys.time() - st
 
 n <- nrow(dams)
-library(mco)
 st <- Sys.time()
-optim <- nsga2(fn = fitness, idim = n, odim = 2, generations = 20,
-               mprob = 0.2, popsize = 24, cprob = 0.8,
+optim <- nsga2(fn = fitness, idim = n, odim = 2, generations = 1000,
+               mprob = 0.2, popsize = 40, cprob = 0.8,
                lower.bounds = rep(0, n), upper.bounds = rep(1, n))
 Sys.time() - st
 # plot(optim)
