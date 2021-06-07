@@ -177,7 +177,7 @@ Sys.time() - st
 
 n <- nrow(dams)
 st <- Sys.time()
-optim <- nsga2(fn = fitness, idim = n, odim = 2, generations = 1000,
+optim <- nsga2(fn = fitness, idim = n, odim = 2, generations = 500,
                mprob = 0.2, popsize = 40, cprob = 0.8,
                lower.bounds = rep(0, n), upper.bounds = rep(1, n))
 Sys.time() - st
