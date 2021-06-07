@@ -112,7 +112,7 @@ dcur <- dcur[order(dcur$PFAF_ID,decreasing = T),]
 
 st <- Sys.time()
 master_upstream_list <- find_upstream_ids(t=as.data.frame(sbas[,c('HYBAS_ID','NEXT_DOWN')])[,-3], #removed the geom column
-                                   IDs=dcur$HYBAS_ID) # dfut has both cur and fut
+                                          IDs=dcur$HYBAS_ID) # dfut has both cur and fut
 Sys.time() - st
 
 #<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -135,7 +135,7 @@ assign_group <- function(hybas_id,group){
 
 
 fitness <- function(x){
-  
+  nc<-8 #set no. cores
   decision <- round(x,0)
   
   # installed capacity
@@ -166,61 +166,51 @@ fitness <- function(x){
   sbas_sp <- sp_data %>%
     filter(MAIN_BAS == main_bas_id)
   
-  tab <- foreach(sp = unique(as.character(sbas_sp$binomial)),.combine = 'rbind') %do% {
+  # st <- Sys.time()
+  CI <- parallel::mclapply(unique(as.character(sbas_sp$binomial)), function(sp){
     
     occ <- sbas_sp[sbas_sp$binomial == sp,]
     occ$group_cur <- sapply(occ$HYBAS_ID,function(x) assign_group(x,groups_cur)) #<<<time consuming
-    # occ$group_fut <- sapply(occ$HYBAS_ID,function(x) assign_group(x,groups_fut)) #<<<time consuming
     
-    foreach(alpha = c(0.55),.combine = 'rbind') %do% {
-      
-      L <- occ$SUB_AREA**alpha
-      
-      if(occ$diad[1] == 't'){
-        # total area
-        A = sum(L)
-        sa_cur = sum(L[occ$group_cur == min(occ$group_cur)])
-        # sa_fut = sum(L[occ$group_fut == min(occ$group_fut)])
-        cat <- 'diadromous'
-      }else{
-        # total area
-        A = sum(L)**2
-        # sum pf areas for patches from different groups
-        sa_cur = 0
-        # sa_fut = 0
-        for(i in unique(occ$group_cur)) sa_cur = sa_cur + sum(L[occ$group_cur == i])**2
-        # for(i in unique(occ$group_fut)) sa_fut = sa_fut + sum(L[occ$group_fut == i])**2
-        cat <- 'potamodromous'
-        
-      }
-      
-      # output
-      # main basin id, species name, no.patches, sum area patches, connectivity current, connectivity future
-      
-      data.frame(
-        MAIN_BAS = unique(occ$MAIN_BAS),
-        MAIN_BAS_AREA = occ$MAIN_BAS_AREA[1],
-        binomial = sp,
-        patches.no = nrow(occ),
-        patches.cum.area = sum(occ$SUB_AREA),
-        dams.cur.no = dams_no_cur,
-        # dams.fut.no = dams_no_fut,
-        dams.cur.no.bas = nrow(dcur),
-        # dams.fut.no.bas = nrow(dfut) - nrow(dcur),
-        category = cat,
-        connectivity.cur = (sa_cur/A)*100,
-        # connectivity.fut = (sa_fut/A)*100,
-        alpha = alpha
-      )
-      
+    alpha <- 0.55
+    L <- occ$SUB_AREA**alpha
+    
+    if(occ$diad[1] == 't'){
+      # total area
+      A = sum(L)
+      sa_cur = sum(L[occ$group_cur == min(occ$group_cur)])
+      # cat <- 'diadromous'
+    }else{
+      # total area
+      A = sum(L)**2
+      # sum pf areas for patches from different groups
+      sa_cur <- sapply(unique(occ$group_cur), function(i) sum(L[occ$group_cur == i])**2) %>% sum
+      # cat <- 'potamodromous'
     }
-  }
+    
+    # output
+    return((sa_cur/A)*100)
+    
+    # main basin id, species name, no.patches, sum area patches, connectivity current, connectivity future
+    # return(
+    #   data.frame(
+    #     MAIN_BAS = unique(occ$MAIN_BAS),
+    #     MAIN_BAS_AREA = occ$MAIN_BAS_AREA[1],
+    #     binomial = sp,
+    #     patches.no = nrow(occ),
+    #     patches.cum.area = sum(occ$SUB_AREA),
+    #     dams.cur.no = dams_no_cur,
+    #     dams.cur.no.bas = nrow(dcur),
+    #     category = cat,
+    #     connectivity.cur = (sa_cur/A)*100,
+    #     alpha = alpha
+    #   )
+    # )
+    
+  },mc.cores = nc) %>% do.call('c',.)
+  # Sys.time() - st
   
-  # here plug in connectivity
-  # totCI <- a number based on the config of the dams
-  
-  return(c(-totIC,-mean(tab$connectivity.cur,na.rm=T)))
-  
+  return(c(-totIC,-mean(CI,na.rm=T)))
 }
 
 st <- Sys.time()
