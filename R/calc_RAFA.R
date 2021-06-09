@@ -1,12 +1,16 @@
 # source('R/MASTER.R')
 
 # packages needed
-library(sf); library(foreach); library(rfishbase); library(data.table); library(dplyr); 
+library(sf); library(foreach); library(rfishbase); 
+library(data.table); library(dplyr); 
 # library(vroom)
 
 # HydroBASINS data ------------------------------------------------------------------------------------------
 # read hydrobasins data
-hb_data <- read_sf('data/HydroBASINS/global_lev12/hybas_as_lev12_v1c.shp')
+hb_data <- # read_sf('data/HydroBASINS/global_lev12/hybas_as_lev12_v1c.shp')
+  read_sf('data/HYBAS_LEVEL_12_MEKONG/Hybas Level 12 Mekong prj.shp')
+
+hb_data <-st_transform(x=hb_data,crs=4326)
 
 # add basin area
 # main_bas_area <- do.call('rbind',lapply(split(hb_data_frame,hb_data_frame$MAIN_BAS),function(x) data.frame(MAIN_BAS = unique(x$MAIN_BAS),MAIN_BAS_AREA = sum(x$SUB_AREA))))
@@ -29,12 +33,12 @@ cat('\nRetrieving diadromous species from fishbase..')
 # reference dams here but keep all records and corresponding HYBAS
 # then later in the function filter dams based on decision vector and select unique HYBAS IDs
 
-dams <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
+dams <- read_sf('data/Dam data/Dams Mekong MRC and PRC.gpkg') %>%
   filter(Status %in% c('E','C')) %>%
   st_transform(4326)
 dams <- st_intersection(dams,hb_data %>% select(HYBAS_ID)) %>% as_tibble() %>% select(-geom)
 
-source('R/functions_connectivity.R')
+source('functions_connectivity.R')
 # FUNCTION THAT CALCULATES CI PER MAIN BASIN ------------------------------------------------------------------
 
 # Danube 2120008490
@@ -230,4 +234,103 @@ plot(dams[,'incl'])
 
 # ws <- read_sf('')
 
+#### Test impacts of hyper parameters on model performance and runtime----
+library(hypervolume)
+library(scales)
 
+
+generations<-list()
+popsize<-list()
+runtime<-list()
+dec<-list()
+ob<-list()
+hv<-list()
+
+i<-0 #counter 
+
+for (ngen in c(100,1000,10000,100000)){ # number of generation
+  
+    for (ps in seq(from=100, to = 1000, by = 100)){ # initial pop size
+      
+    i<-i+1
+    print(paste('run ', i))
+    
+      
+      timeStart <- Sys.time()
+      optim <- nsga2(fn = fitness, idim = n, odim = 2, generations = 20,
+                     mprob = 0.2, popsize = 24, cprob = 0.8,
+                     lower.bounds = rep(0, n), upper.bounds = rep(1, n))
+      timeEnd<-Sys.time() 
+      
+      # save: 
+      generations[[i]]<-ngen # number of generations
+      popsize[[i]]<-ps #population size
+      runtime[[i]]<-as.numeric(difftime(timeEnd, timeStart, units='mins')) # runtime
+      dec[[i]]<-round(optim$par,0) # decisionms
+      ob[[i]]<- -optim$value %>% as.data.frame() # objective values 
+      
+      # hyper volumes: normalize first....
+      hv[[i]]<-hypervolume(method='box', 
+                           cbind(rescale(ob[[i]]$V1,to =c(0,1)),
+                             rescale(ob[[i]]$V2,to =c(0,1))))@Volume
+      
+      
+    }
+  
+}
+
+# backup 
+ob_orig<-ob
+
+hyperP_orig<-data.frame(popsize=as.numeric(popsize),
+                        generations=as.numeric(generations),
+                        runtime=as.numeric(runtime),
+                        hypervolume=as.numeric(hv))
+
+# plotting
+
+hyperP_results<-data.frame(popsize=as.numeric(popsize),
+                              generations=as.numeric(generations),
+                              runtime=as.numeric(runtime),
+                              hypervolume=as.numeric(hv))
+
+
+library(ggplot2)
+library(forcats)
+library(reshape2)
+library(patchwork)
+library(pals)
+
+p1<-ggplot(data=hyperP_results, aes(x=popsize,y=runtime,color=as.factor(generations)))+
+  geom_line()
+p2<-ggplot(data=hyperP_results, aes(x=popsize,y=hypervolume,color=as.factor(generations)))+
+  geom_line()
+
+p3<-p1+p2
+
+ggsave('NSGAII benchmarking.png',p3)
+
+df<-melt(ob,id.vars = c('V1','V2'))
+df$popsize<-hyperP_results$popsize[df$L1]
+df$generations<-hyperP_results$generations[df$L1]
+
+
+df_labels<-as.factor(paste(
+                    paste( 'popsize', as.character(hyperP_results$popsize)),
+                     paste(as.character(hyperP_results$generations),'generations')))
+
+df$labels<-df_labels[df$L1]
+
+
+# ordering: to be revisited
+# df$plotorder<-with(df, order(popsize))
+# df<-df[order(df$plotorder),]
+# df%>%mutate(labels = fct_reorder(labels, plotorder))
+
+
+
+
+p4<-ggplot(data=df, aes(x=V1, y=V2,color=labels))+
+  geom_point()+scale_colour_manual(name = "Species Names", values = rev(plasma(length(unique(df$labels)))))
+
+ggsave('NSGAII benchmarking PO solutions.png',p4)
