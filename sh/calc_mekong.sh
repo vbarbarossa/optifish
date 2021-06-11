@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -n 24
-#SBATCH -t 1-00:00:00
-#SBATCH -p "cpu-medium"
+#SBATCH -t 6-00:00:00
+#SBATCH -p "cpu-long"
 #SBATCH --output=sh/calc_mekong.out
 #SBATCH --mail-type=END
 #SBATCH --mail-user=v.barbarossa@cml.leidenuniv.nl

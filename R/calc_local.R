@@ -201,3 +201,24 @@ Sys.time() - st
 
 saveRDS(optim,paste0('proc/optim_mekong_sensitivity_pop',df$ps[g],'_gen',df$ngen[g],'.rds'))
 
+
+optim <- readRDS('~/surfdrive/data.optim_proc/optim_mekong.rds')
+
+dec <- round(optim$par,0) %>% as.data.frame()
+ob <- -optim$value %>% as.data.frame()
+
+# sort based on IC
+dec <- dec[sort(ob$V1,index.return=T)$ix,]
+ob <- ob[sort(ob$V1,index.return=T)$ix,]
+
+
+# INCLUSION PROBABILITY
+# probability of each dam being included
+dams <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
+  filter(Status %in% c('E','C')) %>%
+  st_transform(4326)
+dams$incl <- apply(dec,2,mean) %>% as.numeric
+
+plot(st_geometry(dams))
+plot(dams[,'incl'])
+
