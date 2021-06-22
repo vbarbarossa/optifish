@@ -1,7 +1,9 @@
 # source('R/MASTER.R')
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) # see here: https://stackoverflow.com/questions/13672720/r-command-for-setting-working-directory-to-source-file-location-in-rstudio
 
 # packages needed
-library(sf); library(foreach); library(rfishbase); 
+library(sf); library(foreach);
+
 library(data.table); library(dplyr); 
 # library(vroom)
 
@@ -287,12 +289,21 @@ hyperP_orig<-data.frame(popsize=as.numeric(popsize),
                         runtime=as.numeric(runtime),
                         hypervolume=as.numeric(hv))
 
-# plotting
+# plotting ----
 
+# Make dataframe collection results for all trials 
 hyperP_results<-data.frame(popsize=as.numeric(popsize),
                               generations=as.numeric(generations),
                               runtime=as.numeric(runtime),
                               hypervolume=as.numeric(hv))
+
+# create unique factor labels for each run
+hyperP_results$labels<-as.factor(paste(
+  paste( 'popsize', as.character(hyperP_results$popsize)),
+  paste(as.character(hyperP_results$generations),'generations')))
+
+# create an order for the labels (i.e., from small n generation to large, same for popsize. Required to later sort the paretofronts on ggplot)
+hyperP_results$labelorder<-with(hyperP_results, order(generations,popsize))
 
 
 library(ggplot2)
@@ -301,35 +312,31 @@ library(reshape2)
 library(patchwork)
 library(pals)
 
-p1<-ggplot(data=hyperP_results, aes(x=popsize,y=runtime,color=as.factor(generations)))+
-  geom_line()
-p2<-ggplot(data=hyperP_results, aes(x=popsize,y=hypervolume,color=as.factor(generations)))+
-  geom_line()
 
-p3<-p1+p2
+#Plot sensitivity of hyper parameters
+  
+  p1<-ggplot(data=hyperP_results, aes(x=popsize,y=runtime,color=as.factor(generations)))+
+    geom_line()
+  p2<-ggplot(data=hyperP_results, aes(x=popsize,y=hypervolume,color=as.factor(generations)))+
+    geom_line()
+  
+  p3<-p1+p2
 
-ggsave('NSGAII benchmarking.png',p3)
+  ggsave('NSGAII benchmarking.png',p3)
 
+# Create data from the list of PO portfolios of each rum
 df<-melt(ob,id.vars = c('V1','V2'))
 df$popsize<-hyperP_results$popsize[df$L1]
 df$generations<-hyperP_results$generations[df$L1]
 
+# assign labels for plotting and resort the labels (wchih are factors) according to popsize and generations. Otherwise, colors are associated to the set of PO point from eahc run in a random way. 
+df$labels<-hyperP_results$labels[df$L1]
+df$labelorder<-hyperP_results$labelorder[df$L1]
 
-df_labels<-as.factor(paste(
-                    paste( 'popsize', as.character(hyperP_results$popsize)),
-                     paste(as.character(hyperP_results$generations),'generations')))
+# factor ordering
+ df%>%mutate(labels = fct_reorder(labels, labelorder))
 
-df$labels<-df_labels[df$L1]
-
-
-# ordering: to be revisited
-# df$plotorder<-with(df, order(popsize))
-# df<-df[order(df$plotorder),]
-# df%>%mutate(labels = fct_reorder(labels, plotorder))
-
-
-
-
+# Plot pareto optimal tradeoffs for each run.  
 p4<-ggplot(data=df, aes(x=V1, y=V2,color=labels))+
   geom_point()+scale_colour_manual(name = "Species Names", values = rev(plasma(length(unique(df$labels)))))
 
