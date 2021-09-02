@@ -26,13 +26,12 @@ HYBAS$QS_1<-HYBAS$YS_1*HYBAS$SUB_AREA
 HYBAS$YS_2<-over(as_Spatial(HYBAS),as_Spatial(GP))["SedYield"] %>% data.matrix(.)
 HYBAS$QS_2<-HYBAS$YS_2*HYBAS$SUB_AREA
 
-p1<-ggplot(data=HYBAS,aes(fill=QS_1))+geom_sf(color = NA)+ggtitle('Rasterized Method')
-p2<-ggplot(data=HYBAS,aes(fill=QS_2))+geom_sf(color = NA)+ggtitle("Vectorized Method")
-p3<-ggplot(data=HYBAS,aes(fill=QS_1-QS_2))+geom_sf(color = NA)+ggtitle("Difference")
-
-library(patchwork)
-
-p1+p2+p3
+# p1<-ggplot(data=HYBAS,aes(fill=QS_1))+geom_sf(color = NA)+ggtitle('Rasterized Method')
+# p2<-ggplot(data=HYBAS,aes(fill=QS_2))+geom_sf(color = NA)+ggtitle("Vectorized Method")
+# p3<-ggplot(data=HYBAS,aes(fill=QS_1-QS_2))+geom_sf(color = NA)+ggtitle("Difference")
+# 
+# library(patchwork)
+# p1+p2+p3
 
 # 3 map connectivity matrix
 
@@ -68,12 +67,15 @@ for(i in row.names(I)) {
 
 # load dams dataset
 dams$CI <- dams$GrossStora*10**6/(dams$MeanQ_m3s*60*60*24*365.25)
-dams$TE <- 1-0.05/sqrt(dams$CI) # trapping efficiency
-dams$TE[dams$TE < 0] <- 0
-dams$TE[is.na(dams$TE)] <- 0
+dams$TE_sus <- 1-0.05/sqrt(dams$CI) # trapping efficiency
+dams$TE_sus[dams$TE_sus < 0] <- 0
+dams$TE_sus[is.na(dams$TE_sus)] <- 0
+TE_bed <- 1
+f_bed <- 0.1
+dams$TE <- (1-f_bed)*dams$TE_sus + f_bed*TE_bed 
 dams$RE <- 1-dams$TE # release efficiency
 
-sed_trans <- function(M=I){
+sed_trans <- function(I){
   
   # reoder the QS based on matrix rows
   qs <- data.frame(QS = HYBAS$QS_1)
@@ -81,23 +83,25 @@ sed_trans <- function(M=I){
   # remove NAs
   qs[is.na(qs)] <- 0
   
+  MQS = I
   # [1:n,n:most_downstream] >> [cols of I, rows of I]
   for(j in 1:length(dams$HYBAS_ID)){
     id <- dams$HYBAS_ID[j]
     up_ <- row.names(I)[I[,as.character(id)] == 1]
     dw_ <- colnames(I)[I[as.character(id),] == 1]
-    M[up_,dw_] <- M[up_,dw_] * dams$RE[dams$HYBAS_ID == id]  
+    MQS[up_,dw_] <- MQS[up_,dw_] * dams$RE[dams$HYBAS_ID == id]  
   }
   
   return(
     data.frame(HYBAS_ID = as.numeric(colnames(MQS)),
                QS_sum = as.numeric(qs[row.names(M),'QS'] %*% M))
   )
+  
 }
 
-try <- inner_join(HYBAS %>% select(HYBAS_ID),d)
-
-
+st <- Sys.time()
+a = sed_trans(I=I)
+Sys.time() - st
 
 
 
