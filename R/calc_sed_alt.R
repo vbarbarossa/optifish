@@ -165,7 +165,33 @@ row.names(qs) <- as.character(HYBAS$HYBAS_ID)
 # remove NAs
 qs[is.na(qs)] <- 0
 
+# map outlet
 outlet <- "4120017020"
+out <- which(row.names(I) == outlet)
+
+# premap dams release efficiency to network
+damsMQS <- foreach(j = 1:length(dams$HYBAS_ID)) %do% {
+  M <- I
+  id <- dams$HYBAS_ID[j] # first three rows can be defined outside the fitness function
+  up_ <- row.names(I)[I[,as.character(id)] == 1]
+  dw_ <- colnames(I)[I[as.character(id),] == 1]
+  M[up_,dw_] <- M[up_,dw_] * dams$RE[dams$HYBAS_ID == id]
+  return(M)
+}
+names(damsMQS) <- dams$HYBAS_ID
+
+# even slower to convert it to stars
+# library(stars)
+# rl <- lapply(damsMQS,function(x){
+#   r <- raster(as.matrix(x))
+#   crs(r) <- 4326
+#   r <- st_as_stars(r)
+#   return(r)
+# })
+# 
+# rs = do.call('c',rl)
+# rs = st_redimension(rs)
+
 
 fitness <- function(x, sedim = T, nc = 24){ # make it modular to switch on and off different modules
   # nc<-24 #set no. cores
@@ -181,18 +207,20 @@ fitness <- function(x, sedim = T, nc = 24){ # make it modular to switch on and o
     # reoder the QS based on matrix rows
     dams_sed <- dams[decision == 1,]
     
-    out <- which(row.names(I) == outlet)
+    # MQS = I
+    # # [1:n,n:most_downstream] >> [cols of I, rows of I]
+    # # <<<<<<<<<< BOTTLENECK
+    # st <- Sys.time()
+    # for(j in 1:length(dams_sed$HYBAS_ID)){
+    #   id <- dams_sed$HYBAS_ID[j] # first three rows can be defined outside the fitness function
+    #   up_ <- row.names(I)[I[,as.character(id)] == 1]
+    #   dw_ <- colnames(I)[I[as.character(id),] == 1]
+    #   MQS[up_,dw_] <- MQS[up_,dw_] * dams_sed$RE[dams_sed$HYBAS_ID == id]
+    # }
+    # Sys.time() - st
     
-    MQS = I
-    
-    # [1:n,n:most_downstream] >> [cols of I, rows of I]
-    # <<<<<<<<<< BOTTLENECK
-    for(j in 1:length(dams_sed$HYBAS_ID)){
-      id <- dams_sed$HYBAS_ID[j] # first three rows can be defined outside the fitness function
-      up_ <- row.names(I)[I[,as.character(id)] == 1]
-      dw_ <- colnames(I)[I[as.character(id),] == 1]
-      MQS[up_,dw_] <- MQS[up_,dw_] * dams_sed$RE[dams_sed$HYBAS_ID == id]  
-    }
+    # same speed than above
+    MQS = Reduce('*',damsMQS[as.character(dams_sed$HYBAS_ID)])
     
     # data.frame(HYBAS_ID = as.numeric(colnames(MQS)),
     #              QS_sum = as.numeric(qs[row.names(MQS),'QS'] %*% MQS))
@@ -264,10 +292,10 @@ fitness <- function(x, sedim = T, nc = 24){ # make it modular to switch on and o
 }
 
 st <- Sys.time()
-fitness(sample(c(0,1),nrow(dams),replace = T))
+fitness(sample(c(0,1),nrow(dams),replace = T),nc=8)
 Sys.time() - st
 
-# max computation time ~8.5 sec
+# max computation time ~7.5 sec
 st <- Sys.time()
 fitness(rep(1,nrow(dams)), sedim = T, nc=8)
 Sys.time() - st
