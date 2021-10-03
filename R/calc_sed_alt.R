@@ -1,12 +1,7 @@
 # packages needed
 library(sf); library(foreach); library(rfishbase); library(data.table); library(dplyr); library(mco)
 
-sp_ranges_file <- '~/surfdrive/Documents/projects/fishsuit/proc/species_ranges_raw_on_hybas12.rds' #local
-# sp_ranges_file <- '~/data/data/species_ranges_raw_on_hybas12.rds'
-hb_directory <- 'data/HydroBASINS/global_lev12/' #local
-# hb_directory <- '~/data/data/HydroBASINS/global_lev12/'
-dams_file <- 'data/Dams Mekong MRC and PRC.gpkg' #local
-# dams_file <- '~/data/data/Mekong dams/Dams Mekong MRC and PRC.gpkg'
+source('R/master_paths.R')
 
 # HydroBASINS data ------------------------------------------------------------------------------------------
 # read hydrobasins data
@@ -193,7 +188,7 @@ names(damsMQS) <- dams$HYBAS_ID
 # rs = st_redimension(rs)
 
 
-fitness <- function(x, sedim = T, nc = 24){ # make it modular to switch on and off different modules
+fitness <- function(x, sedim = T, nc = 8){ # make it modular to switch on and off different modules
   # nc<-24 #set no. cores
   decision <- round(x,0)
   ids <- dams$HYBAS_ID[decision == 1] %>% unique
@@ -307,8 +302,12 @@ Sys.time() - st
 
 n <- nrow(dams)
 st <- Sys.time()
-optim <- nsga2(fn = fitness, idim = n, odim = 3, generations = 1,
-               mprob = 0.2, popsize = 12, cprob = 0.8,
+optim <- nsga2(fn = fitness, 
+               idim = n, 
+               odim = 3, 
+               generations = 3,
+               mprob = 0.2, 
+               popsize = 4, cprob = 0.8,
                lower.bounds = rep(0, n), upper.bounds = rep(1, n))
 Sys.time() - st
 # plot(optim)
@@ -340,6 +339,8 @@ ggplot(ob) + geom_point(aes(x = V1, y = V2, color = V3)) + xlab('IC') + ylab('se
 
 # next steps
 # 1 - check how to improve the speed performance of sediment part in fitness function, probably need to pre-map the dams matrices and simply multiply them in the fitness function - check how to best multiply matrices in R
+# --- checked, this is the best that can be done, the bottleneck is the size of the matrix ~6k by 6k
+
 # 2 - check whether volume or flow deviation (storage/streamflow) is the best way to substitute IC
 # 3 - do the pre-filtering on dams based on whether they occurr on the tributary of the hb unit (see google docs)
 # 4 - run on Alice
