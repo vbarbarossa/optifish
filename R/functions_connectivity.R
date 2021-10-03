@@ -41,3 +41,16 @@ find_upstream_ids <- function(t,IDs){
   names(l) <- IDs
   return(l)
 }
+
+# function that allocates the row to a different group based on hybas_id
+# if no group is found, returns 0
+assign_group <- function(hybas_id,group){
+  a <- 0
+  for(j in 1:length(group)){
+    if(hybas_id %in% group[[j]]){
+      a <- j
+      break
+    }
+  }
+  return(a) 
+}

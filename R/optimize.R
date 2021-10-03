@@ -1,9 +1,17 @@
 # packages needed
-library(sf); library(foreach); library(rfishbase); library(data.table); library(dplyr); library(mco)
+library(sf); library(foreach); library(rfishbase); library(data.table); library(dplyr); library(mco); library(sp); library(raster); library(exactextractr); library(igraph)
 
+# retrieve paths to input files
 source('R/master_paths.R')
 
-# HydroBASINS data ------------------------------------------------------------------------------------------
+# functions for CI calculation
+source('R/functions_connectivity.R')
+
+# HYBAS ID of Mekong
+main_bas_id <- 4120017020
+
+# HydroBASINS data --------------------------------------------------------------------------
+
 # read hydrobasins data
 hb_data <- foreach(i = c('as'),.combine = 'rbind') %do% read_sf(paste0(hb_directory,'hybas_',i,'_lev12_v1c.shp'))
 # add basin area
@@ -17,21 +25,28 @@ main_bas_area <- hb_data %>%
   summarize(MAIN_BAS_AREA = sum(SUB_AREA))
 
 hb_data <- inner_join(hb_data,main_bas_area,by='MAIN_BAS') %>%
-  filter(MAIN_BAS %in% c(4120017020))#,4120023810,4120023060))
+  filter(MAIN_BAS %in% main_bas_id)#,4120023810,4120023060))
 
-# select diadromous and non-diadromous species------------------------------------------------------------
+# Select diadromous and non-diadromous species ----------------------------------------------
 
 cat('\nRetrieving diadromous species from fishbase..')
 
-# # load fishbase metadata
-fishbase <- species(fields = c('Species','AnaCat')) %>% # get species table for all species
-  rename(binomial = Species)
-#
-fishbase$AnaCat <- as.factor(fishbase$AnaCat)
-levels(fishbase$AnaCat) <- c(rep('Diad.',23),'Non.','Ocea.','Ocea.','Pota.','Pota.')
-# table(fishbase$AnaCat)
-#
-# # Species range data --------------------------------------------------------------------------------------
+if(!file.exists('proc/fishbase_data.csv')){
+  # # load fishbase metadata
+  fishbase <- species(fields = c('Species','AnaCat')) %>% # get species table for all species
+    rename(binomial = Species)
+  #
+  fishbase$AnaCat <- as.factor(fishbase$AnaCat)
+  levels(fishbase$AnaCat) <- c(rep('Diad.',13),'Non.','Ocea.','Ocea.','Pota.','Pota.')
+  
+  write.csv(fishbase,'proc/fishbase_data.csv',row.names = F)
+  
+}else{
+  fishbase <- read.csv('proc/fishbase_data.csv') %>% as_tibble  
+}
+
+# Species range data ------------------------------------------------------------------------
+
 sp_data <- readRDS(sp_ranges_file) %>%
   inner_join(.,hb_data %>% as_tibble() %>% select(HYBAS_ID,MAIN_BAS,SUB_AREA,MAIN_BAS_AREA),by="HYBAS_ID") %>%
   as.data.table(.)
@@ -40,7 +55,8 @@ sp_data <- readRDS(sp_ranges_file) %>%
 sp_data$diad <- 'f'
 sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']] <- 't'
 
-# Dams data ---------------------------------------------------------------------------------------------
+# Dams data ---------------------------------------------------------------------------------
+
 # reference dams here but keep all records and corresponding HYBAS
 # then later in the function filter dams based on decision vector and select unique HYBAS IDs
 
@@ -50,32 +66,15 @@ dams <- read_sf(dams_file) %>%
 sf_use_s2(FALSE)
 dams <- st_intersection(dams,hb_data %>% dplyr::select(HYBAS_ID)) %>% as_tibble() %>% dplyr::select(-geom)
 
-source('R/functions_connectivity.R')
-# FUNCTION THAT CALCULATES CI PER MAIN BASIN ------------------------------------------------------------------
+# Map dams to hybas12 -----------------------------------------------------------------------
 
-# Danube 2120008490
-
-# create fictitious sp data
-# sp_data <- hb_data %>%
-#   as.data.table() %>%
-#   filter(MAIN_BAS == 4120017020) %>%
-#   mutate(binomial = 'fragile', diad = 'f') %>%
-#   select('HYBAS_ID', 'binomial', 'MAIN_BAS', 'SUB_AREA', 'MAIN_BAS_AREA', 'diad')
-
-# basin_connectivity <- function(main_bas_id){
-main_bas_id <- 4120017020
-
-sbas <- hb_data%>%
-  filter(MAIN_BAS == main_bas_id)
+sbas <- hb_data
 
 # select dams for the current basin
 dcur <- merge(sbas,dams,by='HYBAS_ID')
 dams_no_cur <- 0
 
-# if(nrow(dcur) > 0){
-
-# divide the basins in groups
-# store dams no first for data frame <<<<<<<<<<<
+# store dams no first for data frame
 dams_no_cur <- nrow(dcur)
 # clean duplicates
 dcur <- dcur[!duplicated(dcur[,1:2]),]
@@ -88,34 +87,13 @@ master_upstream_list <- find_upstream_ids(t=as.data.frame(sbas[,c('HYBAS_ID','NE
                                           IDs=dcur$HYBAS_ID) # dfut has both cur and fut
 Sys.time() - st
 
-# function that allocates the row to a different group based on hybas_id
-# if no group is found, returns 0
-assign_group <- function(hybas_id,group){
-  a <- 0
-  for(j in 1:length(group)){
-    if(hybas_id %in% group[[j]]){
-      a <- j
-      break
-    }
-  }
-  return(a) 
-}
-
-# for sedimentation
-library(sf)
-library(sp)
-library(raster)
-library(ggplot2)
-library(exactextractr)
-library(dplyr)
-
+# Sedimentation data ------------------------------------------------------------------------
 # load 'geomorphic provinces' large areas with similar sediment YIELD [t/km2/yr]
 # GP<-read_sf('./R/data/Mekong geomorphic provinces/Mekong_Geomorphic_provinces.gpkg')
-GP<-read_sf('~/surfdrive/Shared/optifish/GIS/Mekong dams/Geomorphic provinces/Mekong_Geomorphic_provinces.gpkg')
-
+GP<-read_sf(mekong_geomorphic_prov)
 # hydrobasins
 # HYBAS <- read_sf('./R/data/HYBAS_LEVEL_12_MEKONG/Hybas Level 12 Mekong prj.shp')
-HYBAS <- read_sf('~/surfdrive/Shared/optifish/GIS/Mekong dams/Hybas as used by Rafa/Hybas Level 12 Mekong prj.shp')
+HYBAS <- read_sf(hybas_rafa)
 # two ways of doing this 
 
 # 1: create a raster and extract sediment yields in each HB using exat extract. Advantage: Handles situations where a hydrobasins cuts accross multiple geomoeprhic provinces. 
@@ -130,7 +108,6 @@ HYBAS$QS_1<-HYBAS$YS_1*HYBAS$SUB_AREA
 HYBAS$YS_2<-over(as_Spatial(HYBAS),as_Spatial(GP))["SedYield"] %>% data.matrix(.)
 HYBAS$QS_2<-HYBAS$YS_2*HYBAS$SUB_AREA
 
-library(igraph)
 df <- data.frame(from = HYBAS$HYBAS_ID,to = HYBAS$NEXT_DOWN)
 
 outlet <- as.character(df$from[which(df$to == 0)])
