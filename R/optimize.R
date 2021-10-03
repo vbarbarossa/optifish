@@ -1,5 +1,6 @@
 # packages needed
-library(sf); library(foreach); library(rfishbase); library(data.table); library(dplyr); library(mco); library(sp); library(raster); library(exactextractr); library(igraph)
+library(sf); library(foreach); library(rfishbase); library(data.table); library(dplyr); library(mco); library(sp); library(exactextractr); library(igraph)
+# raster package is also needed
 
 # retrieve paths to input files
 source('R/master_paths.R')
@@ -89,24 +90,22 @@ Sys.time() - st
 
 # Sedimentation data ------------------------------------------------------------------------
 # load 'geomorphic provinces' large areas with similar sediment YIELD [t/km2/yr]
-# GP<-read_sf('./R/data/Mekong geomorphic provinces/Mekong_Geomorphic_provinces.gpkg')
 GP<-read_sf(mekong_geomorphic_prov)
 # hydrobasins
-# HYBAS <- read_sf('./R/data/HYBAS_LEVEL_12_MEKONG/Hybas Level 12 Mekong prj.shp')
 HYBAS <- read_sf(hybas_rafa)
 # two ways of doing this 
 
 # 1: create a raster and extract sediment yields in each HB using exat extract. Advantage: Handles situations where a hydrobasins cuts accross multiple geomoeprhic provinces. 
-GPr<-raster(crs = crs(GP), vals = 0, resolution = c(5000, 5000), ext = extent(GP)) %>%
-  rasterize(as_Spatial(GP), ., field = "SedYield")
+GPr<-raster::raster(crs = raster::crs(GP), vals = 0, resolution = c(5000, 5000), ext = raster::extent(GP)) %>%
+  raster::rasterize(as_Spatial(GP), ., field = "SedYield")
 
 HYBAS$YS_1<-exact_extract(GPr,HYBAS,fun = "mean") 
 HYBAS$QS_1<-HYBAS$YS_1*HYBAS$SUB_AREA
 
 
-# 2 using spatial overlay - somewhat easier and faster, but can't handle if a HYBAS intersects multiple geomorphic provinces
-HYBAS$YS_2<-over(as_Spatial(HYBAS),as_Spatial(GP))["SedYield"] %>% data.matrix(.)
-HYBAS$QS_2<-HYBAS$YS_2*HYBAS$SUB_AREA
+# # 2 using spatial overlay - somewhat easier and faster, but can't handle if a HYBAS intersects multiple geomorphic provinces
+# HYBAS$YS_2<-over(as_Spatial(HYBAS),as_Spatial(GP))["SedYield"] %>% data.matrix(.)
+# HYBAS$QS_2<-HYBAS$YS_2*HYBAS$SUB_AREA
 
 df <- data.frame(from = HYBAS$HYBAS_ID,to = HYBAS$NEXT_DOWN)
 
@@ -164,14 +163,18 @@ names(damsMQS) <- dams$HYBAS_ID
 # rs = do.call('c',rl)
 # rs = st_redimension(rs)
 
+# FITNESS FUNCTION --------------------------------------------------------------------------
 
-fitness <- function(x, sedim = T, nc = 8){ # make it modular to switch on and off different modules
+fitness <- function(x, sedim = T, nc = 22){ # make it modular to switch on and off different modules
   # nc<-24 #set no. cores
   decision <- round(x,0)
   ids <- dams$HYBAS_ID[decision == 1] %>% unique
   
   # installed capacity ----------------------------------------
-  totIC <- sum(dams$InstalledC*decision)
+  # totIC <- sum(dams$InstalledC*decision)
+  
+  # volume ----------------------------------------
+  totIC <- sum(dams$GrossStora*decision)
   
   # sedimentation ---------------------------------------------
   if(sedim == T){
@@ -227,34 +230,34 @@ fitness <- function(x, sedim = T, nc = 8){ # make it modular to switch on and of
   
   sps <- unique(as.character(sbas_sp$binomial))
   
-  # st <- Sys.time()
-  CI <- parallel::mclapply(split(sps,cut(1:length(sps),nc,labels = F)), function(sp){
-    
-    occ <- sbas_sp[sbas_sp$binomial == sp,]
-    occ$group_cur <- sapply(occ$HYBAS_ID,function(x) assign_group(x,groups_cur)) #<<<time consuming
-    
-    alpha <- 0.55
-    L <- occ$SUB_AREA**alpha
-    
-    if(occ$diad[1] == 't'){
-      # total area
-      A = sum(L)
-      sa_cur = sum(L[occ$group_cur == min(occ$group_cur)])
-      # cat <- 'diadromous'
-    }else{
-      # total area
-      A = sum(L)**2
-      # sum pf areas for patches from different groups
-      sa_cur <- sapply(unique(occ$group_cur), function(i) sum(L[occ$group_cur == i])**2) %>% sum
-      # cat <- 'potamodromous'
-    }
-    
-    # output
-    return((sa_cur/A)*100)
-    
-    
-  },mc.cores = nc) %>% do.call('c',.)
-  # Sys.time() - st
+  st <- Sys.time()
+  CI <- parallel::mclapply(split(sps,cut(1:length(sps),nc,labels = F)), function(spp){
+    lapply(spp, function(sp){
+      occ <- sbas_sp[sbas_sp$binomial == sp,]
+      occ$group_cur <- sapply(occ$HYBAS_ID,function(x) assign_group(x,groups_cur)) #<<<time consuming
+      
+      alpha <- 0.55
+      L <- occ$SUB_AREA**alpha
+      
+      if(occ$diad[1] == 't'){
+        # total area
+        A = sum(L)
+        sa_cur = sum(L[occ$group_cur == min(occ$group_cur)])
+        # cat <- 'diadromous'
+      }else{
+        # total area
+        A = sum(L)**2
+        # sum pf areas for patches from different groups
+        sa_cur <- sapply(unique(occ$group_cur), function(i) sum(L[occ$group_cur == i])**2) %>% sum
+        # cat <- 'potamodromous'
+      }
+      
+      # output
+      return((sa_cur/A)*100)
+      
+      
+    }) %>% do.call('c',.)},mc.cores = nc) %>% unlist
+  Sys.time() - st
   
   if(sedim == T){
     return(c(-totIC,-totQS,-mean(CI,na.rm=T))) 
@@ -263,56 +266,67 @@ fitness <- function(x, sedim = T, nc = 8){ # make it modular to switch on and of
   }
 }
 
+# Run the algorithm -------------------------------------------------------------------------
+
+# st <- Sys.time()
+# fitness(sample(c(0,1),nrow(dams),replace = T),nc=8)
+# Sys.time() - st
+
+# max computation time ~20 sec with 15 cores, ~30 sec with 4 cores, on Alice testing
 st <- Sys.time()
-fitness(sample(c(0,1),nrow(dams),replace = T),nc=8)
+fitness(rep(1,nrow(dams)), sedim = T, nc=22)
 Sys.time() - st
 
-# max computation time ~7.5 sec
+# without sedimentation part ~7 sec with 15 cores, ~20 sec with 4 cores, on Alice
 st <- Sys.time()
-fitness(rep(1,nrow(dams)), sedim = T, nc=8)
+fitness(rep(1,nrow(dams)), sedim = F, nc=22)
 Sys.time() - st
 
-# without sedimentation part ~0.6 sec
-st <- Sys.time()
-fitness(rep(1,nrow(dams)), sedim = F, nc=8)
-Sys.time() - st
+# at an average speed of 18 sec, can run 24k in 5 days
+# with a pop of 100, that means 240 generations 
+# --> make it 200 to introduce some safety margin
 
 n <- nrow(dams)
 st <- Sys.time()
 optim <- nsga2(fn = fitness, 
                idim = n, 
                odim = 3, 
-               generations = 3,
+               generations = 200,
+               popsize = 100, 
                mprob = 0.2, 
-               popsize = 4, cprob = 0.8,
+               cprob = 0.8,
                lower.bounds = rep(0, n), upper.bounds = rep(1, n))
 Sys.time() - st
+
+saveRDS(optim,'proc/optimize_mekong_vol_sed_ci_gen200_pop100.rds')
+
+
+
 # plot(optim)
 # plot(-optim$value[,1],-optim$value[,2])
 
-saveRDS(optim,'proc/optim_mekong_pop80_gen5000.rds')
-
-dec <- round(optim$par,0) %>% as.data.frame()
-ob <- -optim$value %>% as.data.frame()
-
-# sort based on IC
-dec <- dec[sort(ob$V1,index.return=T)$ix,]
-ob <- ob[sort(ob$V1,index.return=T)$ix,]
-
-
-# INCLUSION PROBABILITY
-# probability of each dam being included
-dams <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
-  # filter(Status %in% c('E','C')) %>%
-  st_transform(4326)
-dams$incl <- apply(dec,2,mean) %>% as.numeric
-
-plot(st_geometry(dams))
-plot(dams[,'incl'])
-
-# ws <- read_sf('')
-ggplot(ob) + geom_point(aes(x = V1, y = V2, color = V3)) + xlab('IC') + ylab('sediments')
-
+# 
+# dec <- round(optim$par,0) %>% as.data.frame()
+# ob <- -optim$value %>% as.data.frame()
+# 
+# # sort based on IC
+# dec <- dec[sort(ob$V1,index.return=T)$ix,]
+# ob <- ob[sort(ob$V1,index.return=T)$ix,]
+# 
+# 
+# # INCLUSION PROBABILITY
+# # probability of each dam being included
+# dams <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
+#   # filter(Status %in% c('E','C')) %>%
+#   st_transform(4326)
+# dams$incl <- apply(dec,2,mean) %>% as.numeric
+# 
+# plot(st_geometry(dams))
+# plot(dams[,'incl'])
+# 
+# # ws <- read_sf('')
+# ggplot(ob) + geom_point(aes(x = V1, y = V2, color = V3)) + xlab('IC') + ylab('sediments')
+# 
 
 # next steps
 # 1 - check how to improve the speed performance of sediment part in fitness function, probably need to pre-map the dams matrices and simply multiply them in the fitness function - check how to best multiply matrices in R
