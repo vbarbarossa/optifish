@@ -1,10 +1,22 @@
+# packages needed
+library(sf); library(foreach); library(rfishbase); library(data.table); library(dplyr); library(mco); library(sp); library(exactextractr); library(igraph)
+# raster package is also needed
+
+# retrieve paths to input files
+source('R/master_paths_local.R')
+
+# functions for CI calculation
+source('R/functions_connectivity.R')
+
 # retrieved from server
-optim <- readRDS('~/surfdrive/tmp/optim_proc_20220126/optimize_mekong_vol_sed_ci_gen200_pop100.rds')
+optim <- readRDS('~/surfdrive/tmp/optim_proc_20220202/optimize_mekong_ic_vol_sed_ci_gen200_pop100.rds')
 
 
 plot(optim)
 plot(-optim$value[,1],-optim$value[,2])
-
+plot(-optim$value[,3],-optim$value[,4])
+plot(-optim$value[,2],-optim$value[,4])
+plot(-optim$value[,1],-optim$value[,3])
 # 
 dec <- round(optim$par,0) %>% as.data.frame()
 ob <- -optim$value %>% as.data.frame()
@@ -25,6 +37,7 @@ plot(st_geometry(dams))
 plot(dams[,'incl'])
 # 
 # # ws <- read_sf('')
+# library(ggplot2)
 # ggplot(ob) + geom_point(aes(x = V1, y = V2, color = V3)) + xlab('IC') + ylab('sediments')
 # 
 

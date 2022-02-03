@@ -1,3 +1,5 @@
+g <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+
 # packages needed
 library(sf); library(foreach); library(rfishbase); library(data.table); library(dplyr); library(mco); library(sp); library(exactextractr); library(igraph)
 # raster package is also needed
@@ -230,7 +232,7 @@ fitness <- function(x, sedim = T, nc = 22){ # make it modular to switch on and o
   
   sps <- unique(as.character(sbas_sp$binomial))
   
-  st <- Sys.time()
+  # st <- Sys.time()
   CI <- parallel::mclapply(split(sps,cut(1:length(sps),nc,labels = F)), function(spp){
     lapply(spp, function(sp){
       occ <- sbas_sp[sbas_sp$binomial == sp,]
@@ -257,7 +259,7 @@ fitness <- function(x, sedim = T, nc = 22){ # make it modular to switch on and o
       
       
     }) %>% do.call('c',.)},mc.cores = nc) %>% unlist
-  Sys.time() - st
+  # Sys.time() - st
   
   if(sedim == T){
     return(c(-totIC,-totVL,-totQS,-mean(CI,na.rm=T))) 
@@ -291,11 +293,11 @@ st <- Sys.time()
 optim <- nsga2(fn = fitness, 
                idim = n, 
                odim = 4, 
-               generations = 500,
-               popsize = 80, 
+               generations = 4000,
+               popsize = 10, 
                mprob = 0.2, 
                cprob = 0.8,
                lower.bounds = rep(0, n), upper.bounds = rep(1, n))
 Sys.time() - st
 
-saveRDS(optim,'proc/optimize_mekong_ic_vol_sed_ci_gen500_pop80.rds')
+saveRDS(optim,paste0('proc/optimize_mekong_ic_vol_sed_ci_gen4000_pop10_',g,'.rds'))
