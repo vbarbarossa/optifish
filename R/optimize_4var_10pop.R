@@ -293,11 +293,11 @@ st <- Sys.time()
 optim <- nsga2(fn = fitness, 
                idim = n, 
                odim = 4, 
-               generations = 4000,
-               popsize = 10, 
+               generations = 5000,
+               popsize = 8, 
                mprob = 0.2, 
                cprob = 0.8,
                lower.bounds = rep(0, n), upper.bounds = rep(1, n))
 Sys.time() - st
 
-saveRDS(optim,paste0('proc/optimize_mekong_ic_vol_sed_ci_gen4000_pop10_',g,'.rds'))
+saveRDS(optim,paste0('proc/optimize_mekong_ic_vol_sed_ci_gen5000_pop8_',g,'.rds'))
