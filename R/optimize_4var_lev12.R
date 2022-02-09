@@ -9,12 +9,12 @@ source('R/master_paths_local.R')
 source('R/functions_connectivity.R')
 
 # HYBAS ID of Mekong
-main_bas_id <- 4120017020
+main_bas_id <- 4120017020 # this corresponds to the outlet!
 
 # HydroBASINS data --------------------------------------------------------------------------
 
 # read hydrobasins data
-hb_data <- foreach(i = c('as'),.combine = 'rbind') %do% read_sf(paste0(hb_directory,'hybas_',i,'_lev12_v1c.shp'))
+hb_data <- foreach(i = c('as'),.combine = 'rbind') %do% read_sf(paste0(hb_directory,'global_lev12/hybas_',i,'_lev12_v1c.shp'))
 # add basin area
 # main_bas_area <- do.call('rbind',lapply(split(hb_data_frame,hb_data_frame$MAIN_BAS),function(x) data.frame(MAIN_BAS = unique(x$MAIN_BAS),MAIN_BAS_AREA = sum(x$SUB_AREA))))
 cat('\nCompiling main basin area..')

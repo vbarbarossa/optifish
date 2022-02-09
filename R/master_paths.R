@@ -9,7 +9,7 @@
 # ALICE -----------
 sp_ranges_file <- '~/data/species_ranges_raw_on_hybas12.rds' #local
 # sp_ranges_file <- '~/data/data/species_ranges_raw_on_hybas12.rds'
-hb_directory <- '~/data/HydroBASINS/global_lev12/' #local
+hb_directory <- '~/data/HydroBASINS/' #local
 # hb_directory <- '~/data/data/HydroBASINS/global_lev12/'
 dams_file <- '~/data/DAMS/Mekong dams/Dams Mekong MRC and PRC.gpkg' #local
 # dams_file <- '~/data/data/Mekong dams/Dams Mekong MRC and PRC.gpkg'
