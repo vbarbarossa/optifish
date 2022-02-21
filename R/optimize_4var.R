@@ -14,8 +14,7 @@ main_bas_id <- 4120017020
 # HydroBASINS data --------------------------------------------------------------------------
 
 # read hydrobasins data
-hb_data <- foreach(i = c('as'),.combine = 'rbind') %do% read_sf(paste0(hb_directory,'hybas_',i,'_lev12_v1c.shp'))
-# add basin area
+hb_data <- foreach(i = c('as'),.combine = 'rbind') %do% read_sf(paste0(hb_directory,'/global_lev12/hybas_',i,'_lev12_v1c.shp'))# add basin area
 # main_bas_area <- do.call('rbind',lapply(split(hb_data_frame,hb_data_frame$MAIN_BAS),function(x) data.frame(MAIN_BAS = unique(x$MAIN_BAS),MAIN_BAS_AREA = sum(x$SUB_AREA))))
 cat('\nCompiling main basin area..')
 
@@ -261,9 +260,9 @@ fitness <- function(x, sedim = T, nc = 22){ # make it modular to switch on and o
 # Sys.time() - st
 
 # # max computation time ~20 sec with 15 cores, ~30 sec with 4 cores, on Alice testing
-# st <- Sys.time()
-# fitness(rep(1,nrow(dams)), sedim = T, nc=22)
-# Sys.time() - st
+st <- Sys.time()
+fitness(rep(1,nrow(dams)), sedim = T, nc=8)
+Sys.time() - st
 # 
 # # without sedimentation part ~7 sec with 15 cores, ~20 sec with 4 cores, on Alice
 # st <- Sys.time()
