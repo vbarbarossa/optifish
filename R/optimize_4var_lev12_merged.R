@@ -366,22 +366,18 @@ fitness <- function(x, sedim = T, nc = 24){ # make it modular to switch on and o
 # fitness(sample(c(0,1),nrow(dams),replace = T),nc=8)
 # Sys.time() - st
 
-# # max computation time ~20 sec with 15 cores, ~30 sec with 4 cores, on Alice testing
 st <- Sys.time()
 fitness(rep(0,nrow(dams)), sedim = T, nc=1)
 Sys.time() - st
-# should yield
+
+
+st <- Sys.time()
+fitness(rep(1,nrow(dams)), sedim = T, nc=1)
+Sys.time() - st
+# should yield (based on previous script with all hybas12 units):
 # > fitness(rep(1,nrow(dams)), sedim = T, nc=8)
 # [1] -5.879448e+04 -1.750559e+05 -1.065452e+07 -4.782631e+01
-# # without sedimentation part ~7 sec with 15 cores, ~20 sec with 4 cores, on Alice
 
-# st <- Sys.time()
-# fitness(rep(1,nrow(dams)), sedim = T, nc=24)
-# Sys.time() - st
-
-# at an average speed of 18 sec, can run 24k in 5 days
-# with a pop of 100, that means 240 generations 
-# --> make it 200 to introduce some safety margin
 
 n <- nrow(dams)
 st <- Sys.time()
