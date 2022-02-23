@@ -10,7 +10,6 @@ source('R/master_paths.R')
 if(LOCAL) source('R/master_paths_local.R')
 
 
-
 # functions for CI calculation
 source('R/functions_connectivity.R')
 
@@ -250,38 +249,44 @@ fitness <- function(x, sedim = T, nc = 24){ # make it modular to switch on and o
     # select dams in current portfolio
     dams_sed <- dams[decision == 1,]
     
-    # calculate total RE matrix (= multiply single dam RE matrices)
-    MQS = Reduce('*',RE_M_array[as.character(dams_sed$INTER_ID)])
+    if(nrow(dams_sed) > 0){
+      # calculate total RE matrix (= multiply single dam RE matrices)
+      MQS = Reduce('*',RE_M_array[as.character(dams_sed$INTER_ID)])
+      
+      # multiply RE by load to get final load at mouth
+      totQS <- as.numeric(qs[row.names(MQS),'QS'] %*% MQS)[out]
+    }else{
+      totQS <- sum(qs$QS)
+    }
     
-    # multiply RE by load to get final load at mouth
-    totQS <- as.numeric(qs[row.names(MQS),'QS'] %*% MQS)[out]
   }
   # Sys.time() - st
   
   # fragmentation ----------------------------------------------
   dc <- dcur[dcur$INTER_ID %in% ids,]
   
-  
-  # here intead:
-  # merge inter_list with downstream inter_id if the dam is not there
-  
-  # connectivity index
-  upstream_list <- master_upstream_list[names(master_upstream_list) %in% dc$INTER_ID]
-  
-  # create ID groups from most upstream to downstream
-  # exclude IDs in downstream groups already present in upstream groups
-  # if(nrow(dc) > 0){
-  groups_cur <- list()
-  for(i in 1:nrow(dc)){
-    # store the hybas_id of the upstream basins
-    groups_cur[[i]] <- upstream_list[[as.character(dc$INTER_ID[i])]]
-    # need to exclude basins that are in the upstream groups
-    if(i > 1) groups_cur[[i]] <- groups_cur[[i]][!groups_cur[[i]] %in% do.call('c',groups_cur[1:(i-1)])]
+  if(nrow(dc) > 0){
+    
+    # connectivity index
+    upstream_list <- master_upstream_list[names(master_upstream_list) %in% dc$INTER_ID]
+    
+    # create ID groups from most upstream to downstream
+    # exclude IDs in downstream groups already present in upstream groups
+    groups_cur <- list()
+    for(i in 1:nrow(dc)){
+      # store the hybas_id of the upstream basins
+      groups_cur[[i]] <- upstream_list[[as.character(dc$INTER_ID[i])]]
+      # need to exclude basins that are in the upstream groups
+      if(i > 1) groups_cur[[i]] <- groups_cur[[i]][!groups_cur[[i]] %in% do.call('c',groups_cur[1:(i-1)])]
+    }
+    names(groups_cur) <- 1:length(groups_cur)
+    groups_cur <- groups_cur[sapply(groups_cur,function(x) length(x) != 0)]
+    
+    groups_cur_df <- mapply(function(x,y) data.frame(INTER_ID = x, group_cur = y),x=groups_cur,y=1:length(groups_cur), SIMPLIFY = F) %>% do.call('rbind',.)
+    
+  }else{
+    groups_cur_df <- data.frame(INTER_ID = inter_basins$INTER_ID, group_cur = 0)
   }
-  names(groups_cur) <- 1:length(groups_cur)
-  groups_cur <- groups_cur[sapply(groups_cur,function(x) length(x) != 0)]
-  
-  groups_cur_df <- mapply(function(x,y) data.frame(INTER_ID = x, group_cur = y),x=groups_cur,y=1:length(groups_cur), SIMPLIFY = F) %>% do.call('rbind',.)
   
   # map grouping of interbasins based on selected dams
   sbas_sp = left_join(sp_data_inter,groups_cur_df, by = 'INTER_ID')
@@ -363,7 +368,7 @@ fitness <- function(x, sedim = T, nc = 24){ # make it modular to switch on and o
 
 # # max computation time ~20 sec with 15 cores, ~30 sec with 4 cores, on Alice testing
 st <- Sys.time()
-fitness(rep(1,nrow(dams)), sedim = T, nc=8)
+fitness(rep(0,nrow(dams)), sedim = T, nc=1)
 Sys.time() - st
 # should yield
 # > fitness(rep(1,nrow(dams)), sedim = T, nc=8)
