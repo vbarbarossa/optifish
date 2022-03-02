@@ -231,7 +231,8 @@ names(RE_M_array) <- dams$INTER_ID
 
 # FITNESS FUNCTION --------------------------------------------------------------------------
 
-fitness <- function(x, sedim = T, nc = 24){ # make it modular to switch on and off different modules
+fitness <- function(x, sedim = T, nc = 1){ # make it modular to switch on and off different modules
+  # library(dplyr)
   # nc<-24 #set no. cores
   decision <- round(x,0)
   ids <- dams$INTER_ID[decision == 1] %>% unique
@@ -386,7 +387,7 @@ optim <- nsga2(fn = fitness,
                sedim = T, # passed to fitness
                idim = n, 
                odim = 4, 
-               generations = 10000,
+               generations = 1000,
                popsize = 40, 
                mprob = 0.2, 
                cprob = 0.8,
@@ -394,3 +395,78 @@ optim <- nsga2(fn = fitness,
 Sys.time() - st
 
 saveRDS(optim,'proc/optimize_lev12_mekong_ic_vol_sed_ci_gen10000_pop40.rds')
+
+library(GA)
+ga(
+  type = 'real-valued',
+  fitness = fitness,
+  nc = 1, # passed to fitness
+  sedim = T, # passed to fitness
+  # idim = n, 
+  # odim = 4, 
+  maxiter = 1,
+  popSize = 40, 
+  pmutation = 0.2, 
+  pcrossover = 0.8,
+  lower = rep(0, n), upper = rep(1, n))
+
+
+library(caRamel)
+
+# need init function
+InitFitness <- function(cl,numcores){    
+  parLapply( cl, 1:numcores, function(xx){
+    require('dplyr')
+    require('data.table')
+    require('igraph')
+    require('Matrix')
+    require('foreach')
+    require('sf')
+    })
+  clusterExport(cl=cl, varlist=c("dams","sp_data_inter","RE_M_array","dcur",
+                                 "qs","out","master_upstream_list","inter_basins")) # Qobs and Data are global variables defined previously by the user 
+} 
+
+
+st <- Sys.time()
+op <- caRamel(
+  nobj = 4,
+  nvar = n,
+  minmax = rep(FALSE,4),
+  bounds = matrix(c(rep(0,n),rep(1,n)), ncol = 2, nrow = n),
+  func = fitness,
+  funcinit = InitFitness,
+  popsize = 1000,
+  archsize = 10,
+  maxrun = 100,
+  prec = matrix(1.e-15, nrow = 1, ncol = 4),
+  carallel = TRUE,
+  numcores = 8,
+  graph = FALSE,
+  sensitivity = FALSE
+)
+Sys.time() - st
+
+
+
+st <- Sys.time()
+caRamel(
+  nobj = 4,
+  nvar = n,
+  minmax = rep(FALSE,4),
+  bounds = matrix(c(rep(0,n),rep(1,n)), ncol = 2, nrow = n),
+  func = fitness,
+  # funcinit = InitFitness,
+  popsize = 100,
+  archsize = 100,
+  maxrun = 100,
+  prec = matrix(1.e-15, nrow = 1, ncol = 4),
+  carallel = FALSE,
+  numcores = NULL,
+  graph = FALSE,
+  sensitivity = FALSE
+)
+Sys.time() - st
+
+
+
