@@ -1,7 +1,8 @@
 # packages needed
-library(sf); library(foreach); library(rfishbase); library(data.table); 
-library(dplyr); library(mco); library(sp); library(exactextractr); library(igraph)
+library(sf); library(foreach); library(rfishbase); library(dplyr)
 # raster package is also needed
+
+sf_use_s2(FALSE)
 
 # retrieve paths to input files
 source('R/master_paths_local.R')
@@ -10,14 +11,13 @@ source('R/master_paths_local.R')
 source('R/functions_connectivity.R')
 
 # HYBAS ID of Mekong
-main_bas_id <- 4080017020 #this corresponds to the outlet!
+main_bas_id <- 4120017020 #this corresponds to the outlet!
 
 # ------------------------------------------------------------------------------
 # HydroBASINS data -------------------------------------------------------------
 
 # read hydrobasins data
-hb_data <- foreach(i = c('as'),.combine = 'rbind') %do% read_sf(paste0(hb_directory,'/global_lev08/hybas_',i,'_lev08_v1c/hybas_',i,'_lev08_v1c.shp'))
-
+hb_data <- foreach(i = c('as'),.combine = 'rbind') %do% read_sf(paste0(hb_directory,'/global_lev12/hybas_',i,'_lev12_v1c.shp'))
 # add basin area
 main_bas_area <- hb_data %>%
   as_tibble() %>%
@@ -55,7 +55,7 @@ tab <- lapply(seq_along(lst),function(i){
 }
 ) %>% do.call('rbind',.) %>% distinct()
 
-saveRDS(tab,'proc/species_ranges_merged_on_hybas08_mekong.rds')
+saveRDS(tab,'proc/species_ranges_merged_on_hybas12_mekong.rds')
 
 # ------------------------------------------------------------------------------
 # Fishbase metadata ------------------------------------------------------------
@@ -86,4 +86,4 @@ sp_data <- tab %>%
 sp_data$diad <- 'f'
 sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']] <- 't'
 
-write.csv(sp_data,'proc/sp_data_mekong.csv',row.names = F)
+write.csv(sp_data,'proc/sp_data_hybas12_mekong.csv',row.names = F)

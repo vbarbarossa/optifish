@@ -5,12 +5,18 @@ g <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 pop_run <- rep(c(20,40,100),2)[g]
 tot_run <- c(
   # 1 day
-  1000000,1000000,1000000,
+  800000,800000,800000,
   # 7 days
-  7000000,7000000,7000000
+  6000000,6000000,6000000
 )[g]
-init_pop_run <- 10000
+init_pop_run <- 100
 arch_run <- 100
+# ------------------------------------------------------------------------------
+
+# dams table details -----------------------------------------------------------
+name_col_IC <- 'InstalledC'
+name_col_V <- 'GrossStora'
+
 # ------------------------------------------------------------------------------
 
 # packages needed
@@ -424,7 +430,7 @@ op <- caRamel(
   popsize = init_pop_run,
   archsize = arch_run,
   maxrun = (tot_run+init_pop_run),
-  prec = matrix(1.e-3, nrow = 1, ncol = 4),
+  prec = matrix(1.e-5, nrow = 1, ncol = 4),
   carallel = TRUE,
   graph = FALSE,
   sensitivity = FALSE
