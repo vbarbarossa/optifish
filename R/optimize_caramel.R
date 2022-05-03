@@ -1,28 +1,46 @@
+
+# ##############################################################################
+# SETTINGS BLOCK ###############################################################
+
 LOCAL = FALSE
-g <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+# g <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 
 # caramel optimization setups --------------------------------------------------
-pop_run <- rep(c(20,40,100),2)[g]
-tot_run <- c(
-  # 1 day
-  800000,800000,800000,
-  # 7 days
-  6000000,6000000,6000000
-)[g]
+pop_run <- 100
+tot_run <- 6000000
 init_pop_run <- 100
 arch_run <- 100
+# ------------------------------------------------------------------------------
+
+# fitness function setup -------------------------------------------------------
+sedimentation = T
+fragmentation = T
+water = T
+energy = T
 # ------------------------------------------------------------------------------
 
 # dams table details -----------------------------------------------------------
 name_col_IC <- 'InstalledC'
 name_col_V <- 'GrossStora'
-
+name_col_Q <- 'MeanQ_m3s' # to calculate release efficiency only
 # ------------------------------------------------------------------------------
 
-# packages needed
-library(sf); library(foreach); library(rfishbase); library(data.table); 
-library(dplyr); library(mco); library(sp); library(exactextractr); library(igraph)
-# raster package is also needed
+# coeffs for sedimentation calculations ----------------------------------------
+TE_bed <- 1
+f_bed <- 0.1
+# ------------------------------------------------------------------------------
+
+# MAIN BASIN ID ----------------------------------------------------------------
+main_bas_id <- outlet <- 4120017020 #this corresponds to the outlet!
+# ------------------------------------------------------------------------------
+
+# packages & ancillary functions -----------------------------------------------
+library(sf); library(foreach); library(rfishbase); 
+library(data.table); library(dplyr); library(mco); 
+library(sp); library(exactextractr); library(igraph)
+
+# settings for sf
+sf_use_s2(FALSE)
 
 # read paths to input files
 source('R/master_paths.R')
@@ -30,11 +48,11 @@ if(LOCAL) source('R/master_paths_local.R')
 
 # functions for CI calculation
 source('R/functions_connectivity.R')
-
-# HYBAS ID of Mekong
-main_bas_id <- outlet <- 4120017020 #this corresponds to the outlet!
-
 # ------------------------------------------------------------------------------
+
+# ##############################################################################
+# CALCULATION BLOCK ############################################################
+
 # HydroBASINS data -------------------------------------------------------------
 
 # read hydrobasins data
@@ -50,45 +68,20 @@ hb_data <- inner_join(hb_data,main_bas_area,by='MAIN_BAS') %>%
   filter(MAIN_BAS %in% main_bas_id)
 
 # ------------------------------------------------------------------------------
+
 # Species data -----------------------------------------------------------------
 
 # from pre/process_species_data.R
-# sp_data <- read.csv('proc/sp_data_mekong.csv') %>% as.data.table()
-
-# redo these steps as in level 08 above <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-cat('\nRetrieving diadromous species from fishbase..')
-
-if(!file.exists('proc/fishbase_data.csv')){
-  # # load fishbase metadata
-  fishbase <- species(fields = c('Species','AnaCat')) %>% # get species table for all species
-    rename(binomial = Species)
-  #
-  fishbase$AnaCat <- as.factor(fishbase$AnaCat)
-  levels(fishbase$AnaCat) <- c(rep('Diad.',23),'Non.','Ocea.','Ocea.','Pota.','Pota.')
-  
-  write.csv(fishbase,'proc/fishbase_data.csv',row.names = F)
-  
-}else{
-  fishbase <- read.csv('proc/fishbase_data.csv') %>% as_tibble  
-}
-
-sp_data <- readRDS(sp_ranges_file) %>%
-  inner_join(.,hb_data %>% as_tibble() %>% select(HYBAS_ID,MAIN_BAS,SUB_AREA,MAIN_BAS_AREA),by="HYBAS_ID") %>%
-  as.data.table(.)
-
-# assign diadromous-non diadromous category
-sp_data$diad <- 'f'
-sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']] <- 't'
-
+sp_data <- read.csv('proc/sp_data_hybas12_mekong.csv') %>% as.data.table()
 
 # ------------------------------------------------------------------------------
+
 # Merge interbasins ------------------------------------------------------------
 
 # load dams data and intersect with hybas
 dams <- read_sf(dams_file) %>%
   # filter(Status %in% c('E','C')) %>%
   st_transform(4326)
-sf_use_s2(FALSE)
 dams <- st_intersection(dams,hb_data %>% dplyr::select(HYBAS_ID)) %>% as_tibble() %>% dplyr::select(-geom)
 
 
@@ -168,17 +161,10 @@ sp_data_inter <- sp_data %>%
   group_by(INTER_ID, binomial) %>%
   summarise(L_tot = sum(L),diad = unique(diad)) %>% ungroup() %>% as.data.frame
 
-
-# assign inter ids to hb_dams
-# inter_dams <- left_join(
-#   hb_dams,
-#   inter_basins %>% mutate(INTER_HYBAS_ID = as.numeric(INTER_HYBAS_ID)),by = c(HYBAS_ID = 'INTER_HYBAS_ID')
-# ) %>% as.data.frame %>% select(-geometry)
-
 # in the fitness algorithm merge groups that have 0s with the next downstream group
 
-
 # ------------------------------------------------------------------------------
+
 # Sedimentation data -----------------------------------------------------------
 
 # load 'geomorphic provinces' large areas with similar sediment YIELD [t/km2/yr]
@@ -187,7 +173,7 @@ GP<-read_sf(mekong_geomorphic_prov)
 HYBAS <- inter_basin_sf %>% st_transform(st_crs(read_sf(hybas_rafa)))
 # two ways of doing this 
 
-# create a raster and extract sediment yields in each HB using exat extract. 
+# create a raster and extract sediment yields in each HB using exact_extract. 
 # Advantage: Handles situations where a hydrobasins cuts accross multiple geomoeprhic provinces. 
 GPr<-raster::raster(crs = raster::crs(GP), vals = 0, 
                     resolution = c(5000, 5000), ext = raster::extent(GP)) %>%
@@ -217,12 +203,10 @@ sf_use_s2(FALSE)
 dams <- st_intersection(dams,inter_basin_sf %>% dplyr::select(INTER_ID)) %>% as_tibble() %>% dplyr::select(-geom)
 
 # load dams dataset and calculate release efficiency
-dams$CI <- dams$GrossStora*10**6/(dams$MeanQ_m3s*60*60*24*365.25)
+dams$CI <- pull(dams,name_col_V)*10**6/(pull(dams,name_col_Q)*60*60*24*365.25)
 dams$TE_sus <- 1-0.05/sqrt(dams$CI) # trapping efficiency
 dams$TE_sus[dams$TE_sus < 0] <- 0
 dams$TE_sus[is.na(dams$TE_sus)] <- 0
-TE_bed <- 1
-f_bed <- 0.1
 dams$TE <- (1-f_bed)*dams$TE_sus + f_bed*TE_bed 
 dams$RE <- 1-dams$TE # release efficiency
 
@@ -250,7 +234,7 @@ names(RE_M_array) <- dams$INTER_ID
 # FITNESS FUNCTION --------------------------------------------------------------------------
 
 # simplify dams table for fitness function
-dams_data <- dams[,c('INTER_ID','InstalledC', 'GrossStora')]
+dams_data <- dams[,c('INTER_ID',name_col_IC, name_col_V)]
 
 # required data from global env:
 # dams_data: table with INTER_ID, InstalledC, GrossStora [data frame]
@@ -268,21 +252,27 @@ fitness <-
     decision <- round(x[index_caramel,],0)
     dams_inter_ids <- unique(dams_data$INTER_ID[decision == 1])
     
+    # result vector
+    result_fitness <- numeric()
+    
     # installed capacity ----------------------------------------
-    totIC <- sum(dams_data$InstalledC*decision)
+    if(energy) result_fitness <- c(result_fitness,sum(pull(dams_data,name_col_IC)*decision))
     
     # volume ----------------------------------------
-    totVL <- sum(dams_data$GrossStora*decision)
+    if(water) result_fitness <- c(result_fitness,sum(pull(dams_data,name_col_V)*decision))
     
     # sedimentation ---------------------------------------------
-    if(length(dams_inter_ids) > 0){
-      # calculate total RE matrix (= multiply single dam RE matrices)
-      MQS = Reduce('*',RE_M_array[as.character(dams_data$INTER_ID[decision == 1])])
-      
-      # multiply RE by load to get final load at mouth
-      totQS <- as.numeric(qs[row.names(MQS),'QS'] %*% MQS)[out]
-    }else{
-      totQS <- sum(qs$QS)
+    if(sedimentation){
+      if(length(dams_inter_ids) > 0){
+        # calculate total RE matrix (= multiply single dam RE matrices)
+        MQS = Reduce('*',RE_M_array[as.character(dams_data$INTER_ID[decision == 1])])
+        
+        # multiply RE by load to get final load at mouth
+        totQS <- as.numeric(qs[row.names(MQS),'QS'] %*% MQS)[out]
+      }else{
+        totQS <- sum(qs$QS)
+      }
+      result_fitness <- c(result_fitness,totQS)
     }
     
     
@@ -290,81 +280,79 @@ fitness <-
     
     # inter_ <- inter_dams[inter_dams$INTER_ID %in% dams_inter_ids,]
     
-    if(length(dams_inter_ids) > 0){
-      
-      # connectivity index
-      upstream_list <- master_upstream_list[names(master_upstream_list) %in% dams_inter_ids]
-      
-      # create ID groups from most upstream to downstream
-      # exclude IDs in downstream groups already present in upstream groups
-      groups <- list()
-      for(i in 1:length(dams_inter_ids)){
-        # store the hybas_id of the upstream basins
-        groups[[i]] <- upstream_list[[as.character(dams_inter_ids[i])]]
-        # need to exclude basins that are in the upstream groups
-        if(i > 1) groups[[i]] <- groups[[i]][!groups[[i]] %in% do.call('c',groups[1:(i-1)])]
+    if(fragmentation){
+      if(length(dams_inter_ids) > 0){
+        
+        # connectivity index
+        upstream_list <- master_upstream_list[names(master_upstream_list) %in% dams_inter_ids]
+        
+        # create ID groups from most upstream to downstream
+        # exclude IDs in downstream groups already present in upstream groups
+        groups <- list()
+        for(i in 1:length(dams_inter_ids)){
+          # store the hybas_id of the upstream basins
+          groups[[i]] <- upstream_list[[as.character(dams_inter_ids[i])]]
+          # need to exclude basins that are in the upstream groups
+          if(i > 1) groups[[i]] <- groups[[i]][!groups[[i]] %in% do.call('c',groups[1:(i-1)])]
+        }
+        names(groups) <- 1:length(groups)
+        groups <- groups[sapply(groups,function(x) length(x) != 0)]
+        
+        # create a table with group ID assigned to each inter ID
+        groups_df <- do.call('rbind',
+                             mapply(function(x,y) data.frame(INTER_ID = x, group = y),x=groups,y=1:length(groups), SIMPLIFY = F)
+        )
+        
+      }else{
+        # if there are no dams, create a table where each inter ID is assigned to the same group
+        groups_df <- data.frame(INTER_ID = inter_basins$INTER_ID, group = 0)
       }
-      names(groups) <- 1:length(groups)
-      groups <- groups[sapply(groups,function(x) length(x) != 0)]
       
-      # create a table with group ID assigned to each inter ID
-      groups_df <- do.call('rbind',
-                           mapply(function(x,y) data.frame(INTER_ID = x, group = y),x=groups,y=1:length(groups), SIMPLIFY = F)
-      )
+      # map grouping of interbasins based on selected dams
+      sbas_sp = left_join(sp_data_inter,groups_df, by = 'INTER_ID')
+      sbas_sp$group[is.na(sbas_sp$group)] <- 0
       
-    }else{
-      # if there are no dams, create a table where each inter ID is assigned to the same group
-      groups_df <- data.frame(INTER_ID = inter_basins$INTER_ID, group = 0)
+      # get all the species names
+      spp <- unique(as.character(sbas_sp$binomial))
+      
+      # calculate CI for each species
+      totCI <- 
+        sum(
+          do.call('c',
+                  lapply(spp, function(sp){
+                    occ <- sbas_sp[sbas_sp$binomial == sp,]
+                    
+                    L <- occ$L_tot
+                    
+                    if(occ$diad[1] == 't'){
+                      # total area
+                      A = sum(L)
+                      sa_cur = sum(L[occ$group == min(occ$group)])
+                      # cat <- 'diadromous'
+                    }else{
+                      # total area
+                      A = sum(L)**2
+                      # sum pf areas for patches from different groups
+                      sa_cur <- sum(
+                        sapply(unique(occ$group), 
+                               function(i) sum(L[occ$group == i])**2)
+                      )
+                      # cat <- 'potamodromous'
+                    }
+                    
+                    # output
+                    return((sa_cur/A)*100)
+                    
+                  })
+          ),
+          na.rm=T)
+      
+      result_fitness <- c(result_fitness,totCI) 
     }
     
-    # map grouping of interbasins based on selected dams
-    sbas_sp = left_join(sp_data_inter,groups_df, by = 'INTER_ID')
-    sbas_sp$group[is.na(sbas_sp$group)] <- 0
-    
-    # get all the species names
-    spp <- unique(as.character(sbas_sp$binomial))
-    
-    # calculate CI for each species
-    totCI <- 
-      sum(
-        do.call('c',
-                lapply(spp, function(sp){
-                  occ <- sbas_sp[sbas_sp$binomial == sp,]
-                  
-                  L <- occ$L_tot
-                  
-                  if(occ$diad[1] == 't'){
-                    # total area
-                    A = sum(L)
-                    sa_cur = sum(L[occ$group == min(occ$group)])
-                    # cat <- 'diadromous'
-                  }else{
-                    # total area
-                    A = sum(L)**2
-                    # sum pf areas for patches from different groups
-                    sa_cur <- sum(
-                      sapply(unique(occ$group), 
-                             function(i) sum(L[occ$group == i])**2)
-                    )
-                    # cat <- 'potamodromous'
-                  }
-                  
-                  # output
-                  return((sa_cur/A)*100)
-                  
-                })
-        ),
-        na.rm=T)
     
     # Return output --------------------------------------------------------------
-    return(
-      c(
-        totIC, # total installed capacity
-        totVL, # total volume
-        totQS, # total sediment load
-        totCI  # cumulative CI
-      )
-    )
+    return( result_fitness )
     
   }
 
@@ -393,36 +381,18 @@ InitFitness <- function(cl,numcores){
     varlist=c("dams_data",
               "RE_M_array","qs","out",
               "master_upstream_list","inter_basins",
-              "sp_data_inter")
+              "sp_data_inter",
+              "name_col_IC", "name_col_V",
+              "sedimentation","fragmentation","water","energy")
   )
 } 
 
-# op <- caRamel(
-#   nobj = 4,
-#   nvar = n,
-#   minmax = rep(TRUE,4),
-#   bounds = matrix(c(rep(0,n),rep(1,n)), ncol = 2, nrow = n),
-#   func = fitness,
-#   repart_gene = c(10, 10, 10, 10),
-#   funcinit = InitFitness,
-#   popsize = 100,
-#   archsize = 100,
-#   maxrun = 600,
-#   prec = matrix(1.e-3, nrow = 1, ncol = 4),
-#   carallel = TRUE,
-#   # numcores = 8,
-#   # write_gen = T,
-#   # listsave = list(pmt = 'proc/caramel/pmt',obj = 'proc/caramel/obj', evol = 'proc/caramel/evol.txt'),
-#   graph = FALSE,
-#   sensitivity = FALSE
-# )
-# plot_caramel(op)
-# plot_pareto(op$objectives,maximized = rep(T,4),objnames = c('InCap','Vol','Sed','CI'))
-
+# define number of objectives based on settings
+nobjs <- sum(sedimentation,fragmentation,water,energy)
 op <- caRamel(
-  nobj = 4,
+  nobj = nobjs,
   nvar = n,
-  minmax = rep(TRUE,4),
+  minmax = rep(TRUE,nobjs),
   bounds = matrix(c(rep(0,n),rep(1,n)), ncol = 2, nrow = n),
   func = fitness,
   repart_gene = c(pop_run/4,pop_run/4,pop_run/4,pop_run/4),
@@ -430,10 +400,16 @@ op <- caRamel(
   popsize = init_pop_run,
   archsize = arch_run,
   maxrun = (tot_run+init_pop_run),
-  prec = matrix(1.e-5, nrow = 1, ncol = 4),
+  prec = matrix(1.e-5, nrow = 1, ncol = nobjs),
   carallel = TRUE,
   graph = FALSE,
   sensitivity = FALSE
 )
 
-saveRDS(op,paste0('proc/caramel_ic_vol_sed_ci_gen',nrow(op$save_crit),'_pop',pop_run,'.rds'))
+plot_caramel(op)
+plot_pareto(op$objectives,maximized = rep(T,nobjs),objnames = c('InCap','Vol','Sed','CI')[c(energy,water,sedimentation,fragmentation)])
+
+# save the right variables in the output name
+save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
+
+saveRDS(op,paste0('proc/caramel_',paste(save_str,collapse = '_'),'_gen',nrow(op$save_crit),'_pop',pop_run,'.rds'))

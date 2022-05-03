@@ -9,8 +9,14 @@ source('R/master_paths_local.R')
 source('R/functions_connectivity.R')
 
 # retrieved from server
-optim <- readRDS('~/surfdrive/tmp/optim_proc_20220202/optimize_mekong_ic_vol_sed_ci_gen200_pop100.rds')
+library(caRamel)
+op <- readRDS('~/surfdrive/tmp/optifish_proc_20220420/caramel_ic_vol_sed_ci_gen6414_pop100.rds')
+plot_caramel(op)
 
+# overlay plots
+
+
+plot_pareto(op$objectives,maximized = rep(T,4),objnames = c('InCap','Vol','Sed','CI'))
 
 plot(optim)
 plot(-optim$value[,1],-optim$value[,2])
