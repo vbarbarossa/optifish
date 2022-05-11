@@ -10,22 +10,16 @@ source('R/functions_connectivity.R')
 
 # retrieved from server
 library(caRamel)
-op <- readRDS('~/surfdrive/tmp/optifish_proc_20220420/caramel_ic_vol_sed_ci_gen6414_pop100.rds')
+op <- readRDS('~/surfdrive/tmp/optifish_proc_20220420/caramel_ic_vol_sed_ci_gen48079_pop100.rds')
 plot_caramel(op)
 
 # overlay plots
-
-
 plot_pareto(op$objectives,maximized = rep(T,4),objnames = c('InCap','Vol','Sed','CI'))
 
-plot(optim)
-plot(-optim$value[,1],-optim$value[,2])
-plot(-optim$value[,3],-optim$value[,4])
-plot(-optim$value[,2],-optim$value[,4])
-plot(-optim$value[,1],-optim$value[,3])
+
 # 
-dec <- round(optim$par,0) %>% as.data.frame()
-ob <- -optim$value %>% as.data.frame()
+dec <- round(op$parameters,0) %>% as.data.frame()
+ob <- op$objectives %>% as.data.frame()
 # 
 # # sort based on IC <<< WHY? ask Rafa
 dec <- dec[sort(ob$V1,index.return=T)$ix,]
@@ -39,8 +33,43 @@ dams <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
   st_transform(4326)
 dams$incl <- apply(dec,2,mean) %>% as.numeric
 # 
-plot(st_geometry(dams))
 plot(dams[,'incl'])
+
+# load river network and watershed for plotting
+
+# # watershed
+# hb_data <- foreach(i = c('as'),.combine = 'rbind') %do% read_sf(paste0(hb_directory,'/global_lev12/hybas_',i,'_lev12_v1c.shp'))
+# # add basin area
+# main_bas_area <- hb_data %>%
+#   as_tibble() %>%
+#   select(HYBAS_ID,MAIN_BAS,SUB_AREA) %>%
+#   group_by(MAIN_BAS) %>%
+#   summarize(MAIN_BAS_AREA = sum(SUB_AREA))
+# hb_data <- inner_join(hb_data,main_bas_area,by='MAIN_BAS') %>%
+#   filter(MAIN_BAS %in% '4120017020')
+# write_sf(hb_data,'proc/basins_mekong.gpkg')
+
+
+
+ws <- hb_data %>% group_by(MAIN_BAS) %>% summarise(do_union = T)
+
+
+
+riv <- read_sf('data/RiverATLAS/RiverATLAS_v10_as.shp')
+riv_mekong <- riv %>% filter(HYBAS_L12 %in% hb_data$HYBAS_ID)
+write_sf(riv_mekong,'proc/rivers_mekong.gpkg')
+
+
+r <- riv %>% filter(DIS_AV_CMS > 10) %>%
+  filter(HYBAS_L12 %in% hb_data$HYBAS_ID) %>%
+  mutate(merge_col = 1) %>%
+  group_by(merge_col) %>% summarise(do_union = T)
+
+
+plot(st_geometry(ws))
+plot(st_geometry(r),add=T)
+plot(dams[,'incl'],pch = 19,add=T)
+
 # 
 # # ws <- read_sf('')
 # library(ggplot2)

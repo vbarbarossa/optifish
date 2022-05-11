@@ -3,31 +3,31 @@
 # SETTINGS BLOCK ###############################################################
 
 LOCAL = FALSE
-# g <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+g <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 
 # caramel optimization setups --------------------------------------------------
 pop_run <- 100
-tot_run <- 6000000
+tot_run <- c(20000000,10000000,10000000,10000000)[g]
 init_pop_run <- 100
 arch_run <- 100
 # ------------------------------------------------------------------------------
 
 # fitness function setup -------------------------------------------------------
-sedimentation = T
-fragmentation = T
-water = T
-energy = T
+sedimentation = c(T,F,T,T)[g]
+fragmentation = c(T,T,F,T)[g]
+energy = c(T,T,T,F)[g]
+water = F
 # ------------------------------------------------------------------------------
 
 # dams table details -----------------------------------------------------------
 name_col_IC <- 'InstalledC'
 name_col_V <- 'GrossStora'
-name_col_Q <- 'MeanQ_m3s' # to calculate release efficiency only
+name_col_Q <- 'MeanQ_m3s' # flow of the river -> to calculate trap efficiency 
 # ------------------------------------------------------------------------------
 
 # coeffs for sedimentation calculations ----------------------------------------
-TE_bed <- 1
-f_bed <- 0.1
+TE_bed <- 1 # trapping efficiency for coarse bed material
+f_bed <- 0.1 # fraction of coarse bed material in the total sediments
 # ------------------------------------------------------------------------------
 
 # MAIN BASIN ID ----------------------------------------------------------------
@@ -54,7 +54,7 @@ source('R/functions_connectivity.R')
 # CALCULATION BLOCK ############################################################
 
 # HydroBASINS data -------------------------------------------------------------
-
+cat('Preparing data..\n')
 # read hydrobasins data
 hb_data <- foreach(i = c('as'),.combine = 'rbind') %do% read_sf(paste0(hb_directory,'/global_lev12/hybas_',i,'_lev12_v1c.shp'))
 
@@ -77,6 +77,9 @@ sp_data <- read.csv('proc/sp_data_hybas12_mekong.csv') %>% as.data.table()
 # ------------------------------------------------------------------------------
 
 # Merge interbasins ------------------------------------------------------------
+cat('\n# -------------------------------------------------------------------\n')
+cat('Mapping interbasins..\n')
+st <- Sys.time()
 
 # load dams data and intersect with hybas
 dams <- read_sf(dams_file) %>%
@@ -96,10 +99,10 @@ hb_dams <- hb_dams[!duplicated(hb_dams[,1:2]),]
 hb_dams <- hb_dams[order(hb_dams$PFAF_ID,decreasing = T),]
 
 # find upstrea IDs of each dam
-st <- Sys.time()
+# st <- Sys.time()
 master_upstream_list <- find_upstream_ids(t=as.data.frame(hb_data[,c('HYBAS_ID','NEXT_DOWN')])[,-3], #removed the geom column
                                           IDs=unique(hb_dams$HYBAS_ID))
-Sys.time() - st
+# Sys.time() - st
 
 # include the outlet (which is connected to all hb units)
 master_upstream_list <- append(master_upstream_list,list(outlet = hb_data$HYBAS_ID))
@@ -147,10 +150,10 @@ inter_basin_sf <- left_join(hb_data,inter_basin_corr) %>%
 
 # recalculate a mater upstream list based on inter_basin
 # find upstrea IDs of each dam
-st <- Sys.time()
+# st <- Sys.time()
 master_upstream_list <- find_upstream_ids(t=as.data.frame(inter_basin_sf[,c('INTER_ID','INTER_NEXT')])[,-3], #removed the geom column
                                           IDs=inter_basin_sf$INTER_ID)
-Sys.time() - st
+# Sys.time() - st
 
 # remap the species to inter_basin and store L for each inter_basin
 # calculate L
@@ -163,9 +166,14 @@ sp_data_inter <- sp_data %>%
 
 # in the fitness algorithm merge groups that have 0s with the next downstream group
 
+et <- Sys.time() - st
+cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
 # ------------------------------------------------------------------------------
 
 # Sedimentation data -----------------------------------------------------------
+cat('\n# -------------------------------------------------------------------\n')
+cat('Sedimentation data..\n')
+st <- Sys.time()
 
 # load 'geomorphic provinces' large areas with similar sediment YIELD [t/km2/yr]
 GP<-read_sf(mekong_geomorphic_prov)
@@ -230,6 +238,11 @@ RE_M_array <- foreach(j = 1:length(dams$INTER_ID)) %do% {
   return(M)
 }
 names(RE_M_array) <- dams$INTER_ID
+
+et <- Sys.time() - st
+cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
+# ------------------------------------------------------------------------------
+
 
 # FITNESS FUNCTION --------------------------------------------------------------------------
 
@@ -387,6 +400,10 @@ InitFitness <- function(cl,numcores){
   )
 } 
 
+cat('\n# -------------------------------------------------------------------\n')
+st <- Sys.time()
+cat('Starting optimization on', as.character(st))
+
 # define number of objectives based on settings
 nobjs <- sum(sedimentation,fragmentation,water,energy)
 op <- caRamel(
@@ -406,10 +423,16 @@ op <- caRamel(
   sensitivity = FALSE
 )
 
-plot_caramel(op)
-plot_pareto(op$objectives,maximized = rep(T,nobjs),objnames = c('InCap','Vol','Sed','CI')[c(energy,water,sedimentation,fragmentation)])
+# plot_caramel(op)
+# plot_pareto(op$objectives,maximized = rep(T,nobjs),objnames = c('InCap','Vol','Sed','CI')[c(energy,water,sedimentation,fragmentation)])
 
 # save the right variables in the output name
 save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
 
+cat('\nSaving..')
 saveRDS(op,paste0('proc/caramel_',paste(save_str,collapse = '_'),'_gen',nrow(op$save_crit),'_pop',pop_run,'.rds'))
+
+et <- Sys.time() - st
+cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
+cat('Ended on', as.character(Sys.time()),'\n')
+cat('# -E-vissero-tutti-felici-e-contenti----------------------------------#\n')
