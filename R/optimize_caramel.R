@@ -7,15 +7,15 @@ g <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 
 # caramel optimization setups --------------------------------------------------
 pop_run <- 100
-tot_run <- c(40000000,10000000,10000000,10000000)[g]
+tot_run <- c(40000000,40000200,40000400,40000600)[g]
 init_pop_run <- 100
 arch_run <- 100
 # ------------------------------------------------------------------------------
 
 # fitness function setup -------------------------------------------------------
-sedimentation = c(T,F,T,T)[g]
-fragmentation = c(T,T,F,T)[g]
-energy = c(T,T,T,F)[g]
+sedimentation = c(T,T,T,T)[g]
+fragmentation = c(T,T,T,T)[g]
+energy = c(T,T,T,T)[g]
 water = F
 # ------------------------------------------------------------------------------
 
