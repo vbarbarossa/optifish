@@ -33,11 +33,6 @@ colnames(tob) <- c('ic','sed','ci')
 ggplot(tob) +
   geom_point(aes(x = ic, y = ci))
 
-library(plotly)
-plot_ly(data = tob, x = 'ic', y = 'sed', z = 'ic', type = 'surface')
-
-library(GPareto)
-nondominated_points(as.matrix(ob)) %>% nrow
 
 tob_l = tidyr::pivot_longer(tob, cols = c('ci','sed'))
 tob_l$name[tob_l$name == 'ci'] <- 'Connectivity Index [%]'
@@ -51,10 +46,12 @@ p <- ggplot(data = tob_l,
   labs(color = '') +
   xlab('Installed Capacity [MW]') +
   ylab('') +
-  coord_cartesian(expand = F) +
+  scale_x_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  scale_y_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  coord_cartesian(expand = T) +
   facet_grid(name~., scales = 'free_y', switch = 'y',
              # labeller = labeller('Connectivity Index' = ci, 'Sedimentation' = sed)
-             ) +
+  ) +
   theme_bw() +
   theme(panel.grid = element_blank(), legend.position = 'none',
         strip.background = element_blank(), strip.placement = 'outside',
@@ -63,7 +60,7 @@ p <- ggplot(data = tob_l,
   )
 p
 
-ggsave('figs/pareto_ci_sed_vs_IC.jpg',p,width = 100, height = 180, units = 'mm',dpi = 600)
+ggsave('figs/pareto_ci_sed_vs_IC.jpg',p,width = 105, height = 150, units = 'mm',dpi = 600)
 
 
 # calculate simplified CI for each dam configuration
