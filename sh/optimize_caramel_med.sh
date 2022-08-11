@@ -10,4 +10,4 @@
 module load Miniconda3
 source activate ~/envs/R-optifish2
 
-Rscript R/optimize_caRamel.R
+Rscript R/optimize_caramel.R
