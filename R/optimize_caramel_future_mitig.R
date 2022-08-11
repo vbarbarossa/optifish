@@ -7,10 +7,10 @@ g <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 LOCAL = FALSE
 
 # caramel optimization setups --------------------------------------------------
-pop_run <- 200
+pop_run <- 100
 tot_run <- c(5000000,5000000)[g]
-init_pop_run <- 200
-arch_run <- 200
+init_pop_run <- 100
+arch_run <- 100
 # ------------------------------------------------------------------------------
 
 # fitness function setup -------------------------------------------------------
@@ -461,7 +461,7 @@ op <- caRamel(
   popsize = init_pop_run,
   archsize = arch_run,
   maxrun = (tot_run+init_pop_run),
-  prec = matrix(c(580,0.01), nrow = 1, ncol = nobjs),
+  prec = matrix(c(58,0.001), nrow = 1, ncol = nobjs),
   carallel = TRUE,
   graph = FALSE,
   sensitivity = FALSE,
