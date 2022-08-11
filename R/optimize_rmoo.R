@@ -207,7 +207,6 @@ save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)
 fut_str <- 'allDams'
 if(!all_dams) fut_str <- 'futureDams'
 
-cat('\nSuccessful: ',op$success)
 cat('\nSaving..')
 saveRDS(op,paste0('proc/nsga2_',fut_str,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
 
