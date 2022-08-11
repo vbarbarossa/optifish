@@ -3,7 +3,7 @@
 #SBATCH -n 24
 #SBATCH -t 1-00:00:00
 #SBATCH -p "cpu-medium"
-#SBATCH --output=sh/optimize_caramel_%a.out
+#SBATCH --output=sh/optimize_rmoo_med_%a.out
 #SBATCH --mail-type=END
 #SBATCH --mail-user=v.barbarossa@cml.leidenuniv.nl
 
