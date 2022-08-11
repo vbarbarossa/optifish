@@ -1,7 +1,7 @@
 
 # ##############################################################################
 # SETTINGS BLOCK ###############################################################
-#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
+# github: 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
 
 g <- as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
 LOCAL = FALSE
