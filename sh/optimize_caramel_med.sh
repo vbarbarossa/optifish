@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -n 24
-#SBATCH --mem=20G
+#SBATCH --mem=50G
 #SBATCH -t 1-00:00:00
 #SBATCH -p "cpu-medium"
 #SBATCH --output=sh/optimize_caramel_%a.out
