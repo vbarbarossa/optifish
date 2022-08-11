@@ -8,6 +8,6 @@
 #SBATCH --mail-user=v.barbarossa@cml.leidenuniv.nl
 
 module load Miniconda3
-source activate ~/envs/r4
+source activate ~/envs/R-optifish2
 
-Rscript R/optimize_caramel.R
+Rscript R/optimize_caramel_future_mitig.R
