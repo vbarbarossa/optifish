@@ -8,15 +8,15 @@ LOCAL = FALSE
 
 # rmoo optimization setups --------------------------------------------------
 pop_size <- 100
-gen_size <- c(10,10)[g]
+gen_size <- c(100,100000,100000)[g]
 # ------------------------------------------------------------------------------
 
 # fitness function setup -------------------------------------------------------
 sedimentation = F
-fragmentation = c(T,T)[g]
-energy = c(T,T)[g]
+fragmentation = T
+energy = T
 water = F
-all_dams = c(T,F)[g]
+all_dams = c(T,T,F)[g]
 # ------------------------------------------------------------------------------
 
 # dams table details -----------------------------------------------------------
@@ -46,7 +46,7 @@ main_bas_id <- outlet <- 4120017020 #this corresponds to the outlet!
 # remotes::install_github('fzao/caRamel',dependencies=T)
 library(sf); library(foreach); library(rfishbase); 
 library(data.table); library(dplyr); library(exactextractr); 
-library(igraph); library(rmoo)
+library(igraph);
 
 # settings for sf
 sf_use_s2(FALSE)
@@ -58,13 +58,25 @@ if(LOCAL) source('R/master_paths_local.R')
 # functions for CI calculation
 source('R/functions_connectivity.R')
 
-source('R/optimize_rmoo_body.R')
+# prepare the data for the optimization
+source('R/prepare_data.R')
 # ------------------------------------------------------------------------------
 
 # FITNESS FUNCTION --------------------------------------------------------------------------
 
 # simplify dams table for fitness function
 dams_data <- dams[,c('INTER_ID','Status','DamHeight',name_col_IC, name_col_V)]
+
+# # rescale IC to a 0-1 range or to sum up to 1
+# ic_min <- min(dams_data$InstalledC)
+# ic_max <- max(dams_data$InstalledC)
+# ic_sum <- sum(dams_data$InstalledC)
+# 
+# dams_data$InstalledC <- dams_data$InstalledC/ic_sum
+# # dams_data$InstalledC <- (dams_data$InstalledC-ic_min)/(ic_max-ic_min)
+# # to revert
+# # dams_data$InstalledC <- dams_data$InstalledC*(ic_max-ic_min) + ic_min
+# # and revert
 
 # # assign passability
 dams_data$pass <- 0
@@ -95,11 +107,11 @@ if(all_dams) n = n + nrow(dams_e)
 # master_upstream_list: list with ids of upstream interbasins for each interbasin
 # sp_data_inter: table with species (and diadromy) in each INTER_ID and pre-mapped total length per INTER_ID: INTER_ID,binomial,L_tot,diad
 
-fitness <- 
+calc_objs <- 
   function(x){ 
     
     # select dams based on index
-    decision <- round(x,0)
+    decision <- x
     
     if(all_dams){
       dams_tot <- rbind(dams_e,dams_f)[decision == 1,] 
@@ -144,26 +156,10 @@ fitness <-
         summarize(group_by(dams_tot,INTER_ID),pass = prod(pass)),
         by = "INTER_ID"
       )
-      d$pass[is.na(d$pass)] <- 1
+      d$pass[is.na(d$pass)] <- 1 # assign 1 to dams not included in this set
       
-      g_pass <- g_master_pass
-      igraph::E(g_pass)$pass <- d$pass
-      igraph::V(g_pass)$names <- d$INTER_ID
-      vertices_id <- names(igraph::V(g_pass))
-      Cij <- 10^dodgr::dodgr_dists(
-        mutate(
-          rbind(
-            igraph::as_data_frame(igraph::as.undirected(g_pass,mode = 'each'), what = "edges")
-            ,
-            select(
-              rename(
-                igraph::as_data_frame(igraph::as.undirected(g_pass,mode = 'each'), what = "edges"),
-                from = to, to = from
-              ),from,to,pass
-            )
-          ),dist = log10(.data$pass)
-        ),
-        from = vertices_id, to = vertices_id)
+      # calculate the Cij matrix
+      Cij <- exp(distances(g_master_pass, mode = 'all', weights = (-1*log(d$pass))) * -1)
       
       totCI <- (sum(Cij * L,na.rm=T) + sum(Cij[,1]*ld))/n_sp
       
@@ -172,7 +168,7 @@ fitness <-
     
     
     # Return output --------------------------------------------------------------
-    return( result_fitness )
+    return( -result_fitness )
     
   }
 
@@ -183,18 +179,20 @@ cat('\n# -------------------------------------------------------------------\n')
 st <- Sys.time()
 cat('Starting optimization on', as.character(st), '\n\n')
 
+# try the function
+calc_objs(rep(1,n))
+calc_objs(rep(0,n))
+
 # define number of objectives based on settings
 nobjs <- sum(sedimentation,fragmentation,water,energy)
 
-fitness(rep(1,n))
-
 st <- Sys.time()
-optim <- nsga2(
-  type = 'binary', nBits = n, fitness = fitness,
+op <- rmoo::nsga2(
+  type = 'binary', nBits = n, fitness = calc_objs,
   popSize = pop_size,
   nObj = nobjs,
   pcrossover = 0.8,
-  pmutation = 0.1,
+  pmutation = 0.2,
   maxiter = gen_size,
   summary = FALSE
 )
@@ -202,14 +200,16 @@ Sys.time() - st
 
 
 # plot_caramel(op)
-plot_pareto(op$objectives,maximized = rep(T,nobjs),objnames = c('InCap','Vol','Sed','CI')[c(energy,water,sedimentation,fragmentation)])
+# plot_pareto(op$objectives,maximized = rep(T,nobjs),objnames = c('InCap','Vol','Sed','CI')[c(energy,water,sedimentation,fragmentation)])
 
 # save the right variables in the output name
 save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
+fut_str <- 'allDams'
+if(!all_dams) fut_str <- 'futureDams'
 
 cat('\nSuccessful: ',op$success)
 cat('\nSaving..')
-saveRDS(op,paste0('proc/caramel_',paste(save_str,collapse = '_'),'_gen',nrow(op$save_crit),'_pop',pop_run,'.rds'))
+saveRDS(op,paste0('proc/nsga2_',fut_str,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
 
 et <- Sys.time() - st
 cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')

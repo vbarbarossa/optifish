@@ -42,3 +42,10 @@ sum(C*L)*100
 # diadromous
 sum(C[,1]*(l/sum(l)))*100
 
+# avoid using dodgr
+# pw <- -1*ifelse(p!=0, log(p), 0)
+pw <- -1*log(p)
+C2 <- exp(distances(g, mode = 'all', weights = pw) * -1)
+round(c(C),3) == round(c(C2),3)
+# yes!
+
