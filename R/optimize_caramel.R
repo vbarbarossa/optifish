@@ -48,7 +48,7 @@ main_bas_id <- outlet <- 4120017020 #this corresponds to the outlet!
 # remotes::install_github('fzao/caRamel',dependencies=T)
 library(sf); library(foreach); library(rfishbase); 
 library(data.table); library(dplyr); library(exactextractr); 
-library(igraph);
+library(igraph); library(caRamel)
 
 # settings for sf
 sf_use_s2(FALSE)
