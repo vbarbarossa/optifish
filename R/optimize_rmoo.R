@@ -186,6 +186,12 @@ calc_objs(rep(0,n))
 # define number of objectives based on settings
 nobjs <- sum(sedimentation,fragmentation,water,energy)
 
+# save the right variables in the output name
+save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
+fut_str <- 'allDams'
+if(!all_dams) fut_str <- 'futureDams'
+
+# run the optimization
 st <- Sys.time()
 op <- rmoo::nsga2(
   type = 'binary', nBits = n, fitness = calc_objs,
@@ -194,18 +200,12 @@ op <- rmoo::nsga2(
   pcrossover = 0.8,
   pmutation = 0.2,
   maxiter = gen_size,
-  summary = FALSE
+  summary = FALSE,
+  monitor = FALSE,
+  names = save_str
 )
 Sys.time() - st
 
-
-# plot_caramel(op)
-# plot_pareto(op$objectives,maximized = rep(T,nobjs),objnames = c('InCap','Vol','Sed','CI')[c(energy,water,sedimentation,fragmentation)])
-
-# save the right variables in the output name
-save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
-fut_str <- 'allDams'
-if(!all_dams) fut_str <- 'futureDams'
 
 cat('\nSaving..')
 saveRDS(op,paste0('proc/nsga2_',fut_str,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))

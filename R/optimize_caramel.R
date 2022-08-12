@@ -172,6 +172,7 @@ InitFitness <- function(cl,numcores){
   # packages
   parLapply( cl, 1:numcores, function(xx){
     require('dplyr')
+    require('igraph')
     require('Matrix')
   })
   # variables needed:
