@@ -220,7 +220,7 @@ op <- caRamel(
 )
 
 # plot_caramel(op)
-plot_pareto(op$objectives,maximized = rep(T,nobjs),objnames = c('InCap','Vol','Sed','CI')[c(energy,water,sedimentation,fragmentation)])
+# plot_pareto(op$objectives,maximized = rep(T,nobjs),objnames = c('InCap','Vol','Sed','CI')[c(energy,water,sedimentation,fragmentation)])
 
 # save the right variables in the output name
 save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]

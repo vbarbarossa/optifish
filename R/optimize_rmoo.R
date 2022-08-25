@@ -8,7 +8,7 @@ LOCAL = FALSE
 
 # rmoo optimization setups --------------------------------------------------
 pop_size <- 100
-gen_size <- c(100,100000,100000)[g]
+gen_size <- c(100,10000,10000)[g]
 # ------------------------------------------------------------------------------
 
 # fitness function setup -------------------------------------------------------
@@ -206,6 +206,7 @@ op <- rmoo::nsga2(
 )
 Sys.time() - st
 
+# plot(-op@fitness[,1],-op@fitness[,2])
 
 cat('\nSaving..')
 saveRDS(op,paste0('proc/nsga2_',fut_str,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
