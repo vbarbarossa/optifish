@@ -8,7 +8,7 @@ LOCAL = FALSE
 
 # rmoo optimization setups --------------------------------------------------
 pop_size <- 100
-gen_size <- c(100,10000,10000)[g]
+gen_size <- c(10000,10000,50000,50000,100000,100000,300000,300000)[g]
 # ------------------------------------------------------------------------------
 
 # fitness function setup -------------------------------------------------------
@@ -16,7 +16,7 @@ sedimentation = F
 fragmentation = T
 energy = T
 water = F
-all_dams = c(T,T,F)[g]
+all_dams = c(T,F,T,F,T,F,T,F)[g]
 # ------------------------------------------------------------------------------
 
 # dams table details -----------------------------------------------------------
@@ -200,11 +200,13 @@ op <- rmoo::nsga2(
   pcrossover = 0.8,
   pmutation = 0.2,
   maxiter = gen_size,
+  suggestions = rbind(rep(1,n),rep(0,n)),
   summary = FALSE,
   monitor = FALSE,
   names = save_str
 )
 Sys.time() - st
+
 
 # plot(-op@fitness[,1],-op@fitness[,2])
 
