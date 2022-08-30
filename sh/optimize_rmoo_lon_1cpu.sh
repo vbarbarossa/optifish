@@ -1,6 +1,8 @@
 #!/bin/bash
 #SBATCH -N 1
 #SBATCH -n 1
+#SBATCH --array 7-8
+#SBATCH --mem=1G
 #SBATCH -t 7-00:00:00
 #SBATCH -p "cpu-long"
 #SBATCH --output=sh/optimize_rmoo_lon_1cpu_%a.out
