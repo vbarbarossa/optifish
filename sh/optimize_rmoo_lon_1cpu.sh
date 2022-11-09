@@ -5,7 +5,7 @@
 #SBATCH --mem=15G
 #SBATCH -t 7-00:00:00
 #SBATCH -p "cpu-long"
-#SBATCH --output=sh/optimize_rmoo_lon_1cpu_%a.out
+#SBATCH --output=sh/optimize_rmoo_lon_1cpu_%A_%a.out
 #SBATCH --mail-type=END
 #SBATCH --mail-user=v.barbarossa@cml.leidenuniv.nl
 
