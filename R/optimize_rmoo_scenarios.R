@@ -340,13 +340,23 @@ ICmax <- sum(pull(dams_data[dams_data$Status != 'P',],name_col_IC))
 
 # pareto pristine
 pp <- readRDS(paste0('proc/nsga2_pristine_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+
+# # find row with most similar IC to ICmax
+# ICmax_row <- which(abs(-pp@fitness[,1] - ICmax) == min(abs(-pp@fitness[,1] - ICmax)))[1]
+# 
+# # set dams
+# dams_data$status <- 'current'
+# dams_data$status[dams_data$Status == 'P'] <- 'future'
+# dams_data$status[pp@population[ICmax_row,] == 0] <- 'future'
+
 # find row with most similar IC to ICmax
-ICmax_row <- which(abs(-pp@fitness[,1] - ICmax) == min(abs(-pp@fitness[,1] - ICmax)))[1]
+ICmax_row <- which(-pp@fitness[,1] <= ICmax)
+v_incl <- apply(pp@population[ICmax_row,],2,sum)
 
 # set dams
 dams_data$status <- 'current'
 dams_data$status[dams_data$Status == 'P'] <- 'future'
-dams_data$status[pp@population[ICmax_row,] == 0] <- 'future'
+dams_data$status[v_incl == 0] <- 'future'
 
 # no species
 n_sp <- round(sum(L) + sum(ld),0)
@@ -404,18 +414,20 @@ ICmax <- sum(pull(dams_data[dams_data$Status != 'P',],name_col_IC))
 
 # pareto pristine
 pp <- readRDS(paste0('proc/nsga2_pristine_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+
 # find row with most similar IC to ICmax
-ICmax_row <- which(abs(-pp@fitness[,1] - ICmax) == min(abs(-pp@fitness[,1] - ICmax)))[1]
+ICmax_row <- which(-pp@fitness[,1] <= ICmax)
+v_incl <- apply(pp@population[ICmax_row,],2,sum)
 
 # set dams
 dams_data$status <- 'current'
 dams_data$status[dams_data$Status == 'P'] <- 'future'
 
 # set passability for dams to mitigate
-dams_data$pass[(pp@population[ICmax_row,] == 0) & (dams_data$status == 'current')] <- assign_passability(height = dams_data$DamHeight[(pp@population[ICmax_row,] == 0) & (dams_data$status == 'current')])
+dams_data$pass[(v_incl == 0) & (dams_data$status == 'current')] <- assign_passability(height = dams_data$DamHeight[(v_incl == 0) & (dams_data$status == 'current')])
 
-# set passability also for future dams??? <<<<<<<<<<<<<
-# dams_data$pass[dams_data$status == 'future'] <- assign_passability(dams_data$DamHeight[dams_data$status == 'future'])
+# set passability also for future dams
+dams_data$pass[dams_data$status == 'future'] <- assign_passability(dams_data$DamHeight[dams_data$status == 'future'])
 
 
 # no species

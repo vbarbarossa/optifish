@@ -124,7 +124,7 @@ op_pres$year <- c(years_range)
 
 
 gen_size <- 1000
-op <- foreach(i = c('pristine','future','removal','mitigation','mitigation2'),.combine = 'rbind') %do% {
+op <- foreach(i = c('pristine','pristine_pass','future','removal','mitigation','mitigation2'),.combine = 'rbind') %do% {
   
   t1 <- readRDS(paste0('proc/nsga2_',i,'_ic_ci_gen',gen_size,'_pop100.rds'))
   t1 <- -t1@fitness %>% as.data.frame()
@@ -135,7 +135,7 @@ colnames(op)[1:2] <- c('ic','ci')
 op$year <- ''
 op <- rbind(op_pres,op)
 
-op$scenario <- factor(op$scenario, levels = c('pristine','present','future','removal','mitigation','mitigation2'))
+op$scenario <- factor(op$scenario, levels = c('pristine','pristine_pass','present','future','removal','mitigation','mitigation2'))
 op$ci <- op$ci*100
 p <- ggplot(data = op,
             aes(x = ic, y = ci, color = scenario, label = year)) +
@@ -143,7 +143,7 @@ p <- ggplot(data = op,
   geom_step(direction = 'hv') +
   # ggrepel::geom_text_repel(force = 1, direction = 'both', max.iter = 100000) +
   # geom_text(hjust=1, vjust=1) +
-  scale_color_manual(values = RColorBrewer::brewer.pal(8,'Dark2')[c(1:6)]) +
+  scale_color_manual(values = RColorBrewer::brewer.pal(8,'Dark2')[c(1:7)]) +
   labs(color = '') +
   xlab('Installed Capacity [MW]') +
   ylab('Connectivity Index [%]') +
@@ -159,6 +159,25 @@ p
 
 ggsave('figs/pareto_scenarios_noyr2.jpg',p,width = 150, height = 120, units = 'mm',dpi = 600)
 
+p <- ggplot(data = op %>% filter(scenario %in% c('pristine','pristine_pass')),
+            aes(x = ic, y = ci, color = scenario, label = year)) +
+  geom_point(alpha = 1) +
+  geom_step(direction = 'hv') +
+  # ggrepel::geom_text_repel(force = 1, direction = 'both', max.iter = 100000) +
+  # geom_text(hjust=1, vjust=1) +
+  scale_color_manual(values = RColorBrewer::brewer.pal(8,'Dark2')[c(1:2)]) +
+  labs(color = '') +
+  xlab('Installed Capacity [MW]') +
+  ylab('Connectivity Index [%]') +
+  scale_x_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  coord_cartesian(expand = T) +
+  theme_bw() +
+  theme(panel.grid = element_blank(), legend.position = 'right',
+        strip.background = element_blank(), strip.placement = 'outside',
+        text = element_text(size = 13),
+        strip.text = element_text(size = 13)
+  )
+p
 
 
 
