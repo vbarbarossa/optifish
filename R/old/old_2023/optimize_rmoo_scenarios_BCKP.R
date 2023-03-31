@@ -137,8 +137,23 @@ calc_objs <-
 # simplify dams table for fitness function
 dams_data <- dams[,c('Code','INTER_ID','Status','DamHeight',name_col_IC, name_col_V)]
 
-# binary function
-assign_passability_bin <- function(height){
+assign_passability_alt <- function(height){
+  return(
+    sapply(height, function(x){
+      res <- 0
+      if(x < 50) res <- 0.3
+      if(x < 40) res <- 0.4
+      if(x < 30) res <- 0.5
+      if(x < 20) res <- 0.6
+      if(x < 10) res <- 0.7
+      if(x < 1) res <- 0.8
+      return(res) 
+    }
+    )
+  )
+}
+
+assign_passability <- function(height){
   return(
     sapply(height, function(x){
       res <- 0
@@ -148,35 +163,6 @@ assign_passability_bin <- function(height){
     )
   )
 }
-
-# step function
-assign_passability_step <- function(height){
-  return(
-    sapply(height, function(x){
-      res <- 0
-      if(x < 50) res <- 0.4
-      if(x < 40) res <- 0.5
-      if(x < 30) res <- 0.6
-      if(x < 20) res <- 0.7
-      if(x < 10) res <- 0.8
-      return(res) 
-    }
-    )
-  )
-}
-
-# linear function
-assign_passability_lin <- function(height){
-  return(
-    sapply(height, function(x){
-      res <- 0.8 - 0.8/50 * x
-      if(x >= 50) res <- 0
-      return(res) 
-    }
-    )
-  )
-}
-
 
 # dams_data$pass[dams_data$DamHeight < 20] <- 0.4
 # dams_data$pass[dams_data$DamHeight < 10] <- 0.6
@@ -191,16 +177,15 @@ dams_data$incl <- 1
 # convert to data frame
 dams_data <- as.data.frame(dams_data)
 
-# PRISTINE SCENARIOS -----------------------------------------------------------
-for(scen in c('pristine','pristine_pass_bin','pristine_pass_step','pristine_pass_lin')){
+# PRISTINE w/ PASSABILITY SCENARIO ---------------------------------------------
+for(scen in c('pristine','pristine_pass','pristine_pass_alt')){
   
   cat('\n',scen,' RUN --------------------------------------------------------\n')
   
   # assign passability
   dams_data$pass <- 0
-  if(scen == 'pristine_pass_bin') dams_data$pass <- assign_passability_bin(dams_data$DamHeight)
-  if(scen == 'pristine_pass_step') dams_data$pass <- assign_passability_step(dams_data$DamHeight)
-  if(scen == 'pristine_pass_lin') dams_data$pass <- assign_passability_lin(dams_data$DamHeight)
+  if(scen == 'pristine_pass') dams_data$pass <- assign_passability(dams_data$DamHeight)
+  if(scen == 'pristine_pass_alt') dams_data$pass <- assign_passability_alt(dams_data$DamHeight)
   
   # dams_data$status <- 'current'
   # dams_data$status[dams_data$Status == 'P'] <- 'future'
@@ -308,96 +293,211 @@ et <- Sys.time() - st
 cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
 
 
+# REMOVAL SCENARIO -------------------------------------------------------------
+scen <- 'removal'
+cat('\n',scen,' RUN --------------------------------------------------------\n')
+# assign passability
+dams_data$pass <- 0
+
+# remove dams that are not in pristine runs <= present IC
+ICmax <- sum(pull(dams_data[dams_data$Status != 'P',],name_col_IC))
+
+# pareto pristine
+save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
+pp <- readRDS(paste0('proc/nsga2_pristine_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+
+# find row with most similar IC to ICmax
+ICmax_row <- which(-pp@fitness[,1] <= ICmax)
+v_incl <- apply(pp@population[ICmax_row,],2,sum)
+
+# set dams
+dams_data$status <- 'current'
+dams_data$status[dams_data$Status == 'P'] <- 'future'
+dams_data$status[v_incl == 0] <- 'future'
+
+# no species
+n_sp <- round(sum(L) + sum(ld),0)
+# no dams
+n = nrow(dams_data[dams_data$status == 'future',])
+# index of future dams
+fut_index <- dams_data$status == 'future'
+
+st <- Sys.time()
+cat('Starting optimization on', as.character(st), '\n\n')
+
+# try the function
+# calc_objs(rep(1,n))
+# calc_objs(rep(0,n))
+
+# define number of objectives based on settings
+nobjs <- sum(sedimentation,fragmentation,water,energy)
+
+# save the right variables in the output name
+save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
+
+# run the optimization
+st <- Sys.time()
+op <- rmoo::nsga2(
+  type = 'binary', nBits = n, fitness = calc_objs,
+  popSize = pop_size,
+  nObj = nobjs,
+  pcrossover = 0.8,
+  pmutation = 0.2,
+  maxiter = gen_size,
+  suggestions = rbind(rep(1,n),rep(0,n)),
+  summary = FALSE,
+  monitor = MONITOR,
+  names = save_str
+)
+Sys.time() - st
 
 
-# REMOVAL-MITIGATION SCENARIOS -------------------------------------------------
-for(scen in c('removal','mitigation_bin','mitigation_step','mitigation_lin')){
-  
-  
-  cat('\n',scen,' RUN --------------------------------------------------------\n')
-  
-  dams_data$incl <- 1
-  
-  # assign passability
-  dams_data$pass <- 0
-  
-  # remove dams that are not in pristine runs <= present IC
-  ICmax <- sum(pull(dams_data[dams_data$Status != 'P',],name_col_IC))
-  
-  # pareto pristine
-  save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
-  pp <- readRDS(paste0('proc/nsga2_pristine_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
-  
-  # find row with most similar IC to ICmax
-  ICmax_row <- which(-pp@fitness[,1] <= ICmax)
-  v_incl <- apply(pp@population[ICmax_row,],2,sum)
-  
-  # set dams
-  dams_data$status <- 'current'
-  dams_data$status[dams_data$Status == 'P'] <- 'future'
-  
-  if(scen == 'removal') dams_data$incl[v_incl == 0 & dams_data$status == 'current'] <- 0
-  if(scen == 'mitigation_bin'){
-    # set passability for dams to mitigate
-  dams_data$pass[(v_incl == 0) & (dams_data$status == 'current')] <- assign_passability_bin(height = dams_data$DamHeight[(v_incl == 0) & (dams_data$status == 'current')])
-  # set passability also for future dams
-  dams_data$pass[dams_data$status == 'future'] <- assign_passability_bin(dams_data$DamHeight[dams_data$status == 'future'])
-  }
-  if(scen == 'mitigation_step'){
-    # set passability for dams to mitigate
-    dams_data$pass[(v_incl == 0) & (dams_data$status == 'current')] <- assign_passability_step(height = dams_data$DamHeight[(v_incl == 0) & (dams_data$status == 'current')])
-    # set passability also for future dams
-    dams_data$pass[dams_data$status == 'future'] <- assign_passability_step(dams_data$DamHeight[dams_data$status == 'future'])
-  }
-  if(scen == 'mitigation_lin'){
-    # set passability for dams to mitigate
-    dams_data$pass[(v_incl == 0) & (dams_data$status == 'current')] <- assign_passability_lin(height = dams_data$DamHeight[(v_incl == 0) & (dams_data$status == 'current')])
-    # set passability also for future dams
-    dams_data$pass[dams_data$status == 'future'] <- assign_passability_lin(dams_data$DamHeight[dams_data$status == 'future'])
-  }
-  
-  # no species
-  n_sp <- round(sum(L) + sum(ld),0)
-  # no dams (excl. removed dams)
-  n = nrow(dams_data[dams_data$incl == '1' & dams_data$status == 'future',])
-  # index of future dams
-  fut_index <- dams_data$status == 'future'
-  
-  st <- Sys.time()
-  cat('Starting optimization on', as.character(st), '\n\n')
-  
-  # try the function
-  # calc_objs(rep(1,n))
-  # calc_objs(rep(0,n))
-  
-  # define number of objectives based on settings
-  nobjs <- sum(sedimentation,fragmentation,water,energy)
-  
-  # save the right variables in the output name
-  save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
-  
-  # run the optimization
-  st <- Sys.time()
-  op <- rmoo::nsga2(
-    type = 'binary', nBits = n, fitness = calc_objs,
-    popSize = pop_size,
-    nObj = nobjs,
-    pcrossover = 0.8,
-    pmutation = 0.2,
-    maxiter = gen_size,
-    suggestions = rbind(rep(1,n),rep(0,n)),
-    summary = FALSE,
-    monitor = MONITOR,
-    names = save_str
-  )
-  Sys.time() - st
-  
-  
-  cat('\nSaving..')
-  saveRDS(op,paste0('proc/nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
-  
-  et <- Sys.time() - st
-  cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
-}
+cat('\nSaving..')
+saveRDS(op,paste0('proc/nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+
+et <- Sys.time() - st
+cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
+
+# MITIGATION SCENARIO -------------------------------------------------------------
+scen <- 'mitigation'
+cat('\n',scen,' RUN --------------------------------------------------------\n')
+# assign passability
+dams_data$pass <- 0
+
+# set passability for dams that are not in pristine runs at equal IC
+ICmax <- sum(pull(dams_data[dams_data$Status != 'P',],name_col_IC))
+
+# pareto pristine
+pp <- readRDS(paste0('proc/nsga2_pristine_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+
+# find row with most similar IC to ICmax
+ICmax_row <- which(-pp@fitness[,1] <= ICmax)
+v_incl <- apply(pp@population[ICmax_row,],2,sum)
+
+# set dams
+dams_data$status <- 'current'
+dams_data$status[dams_data$Status == 'P'] <- 'future'
+
+# set passability for dams to mitigate
+dams_data$pass[(v_incl == 0) & (dams_data$status == 'current')] <- assign_passability(height = dams_data$DamHeight[(v_incl == 0) & (dams_data$status == 'current')])
+
+# set passability also for future dams
+dams_data$pass[dams_data$status == 'future'] <- assign_passability(dams_data$DamHeight[dams_data$status == 'future'])
+
+
+# no species
+n_sp <- round(sum(L) + sum(ld),0)
+# no dams
+n = nrow(dams_data[dams_data$status == 'future',])
+# index of future dams
+fut_index <- dams_data$status == 'future'
+
+st <- Sys.time()
+cat('Starting optimization on', as.character(st), '\n\n')
+
+# try the function
+# calc_objs(rep(1,n))
+# calc_objs(rep(0,n))
+
+# define number of objectives based on settings
+nobjs <- sum(sedimentation,fragmentation,water,energy)
+
+# save the right variables in the output name
+save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
+
+# run the optimization
+st <- Sys.time()
+op <- rmoo::nsga2(
+  type = 'binary', nBits = n, fitness = calc_objs,
+  popSize = pop_size,
+  nObj = nobjs,
+  pcrossover = 0.8,
+  pmutation = 0.2,
+  maxiter = gen_size,
+  suggestions = rbind(rep(1,n),rep(0,n)),
+  summary = FALSE,
+  monitor = MONITOR,
+  names = save_str
+)
+Sys.time() - st
+
+
+cat('\nSaving..')
+saveRDS(op,paste0('proc/nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+
+et <- Sys.time() - st
+cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
+
+
+# MITIGATION2 SCENARIO ---------------------------------------------------------
+scen <- 'mitigation3'
+cat('\n',scen,' RUN --------------------------------------------------------\n')
+# assign passability
+dams_data$pass <- 0
+
+# set passability for dams that are not in pristine runs at equal IC
+ICmax <- sum(pull(dams_data[dams_data$Status != 'P',],name_col_IC))
+
+# pareto pristine
+pp <- readRDS(paste0('proc/nsga2_pristine_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+# find row with most similar IC to ICmax
+ICmax_row <- which(abs(-pp@fitness[,1] - ICmax) == min(abs(-pp@fitness[,1] - ICmax)))[1]
+
+# set dams
+dams_data$status <- 'current'
+dams_data$status[dams_data$Status == 'P'] <- 'future'
+
+# set passability for dams to mitigate
+dams_data$pass[(pp@population[ICmax_row,] == 0) & (dams_data$status == 'current')] <- assign_passability(height = dams_data$DamHeight[(pp@population[ICmax_row,] == 0) & (dams_data$status == 'current')])
+
+# set passability also for future dams??? <<<<<<<<<<<<<
+dams_data$pass[dams_data$status == 'future'] <- assign_passability(dams_data$DamHeight[dams_data$status == 'future'])
+
+
+# no species
+n_sp <- round(sum(L) + sum(ld),0)
+# no dams
+n = nrow(dams_data[dams_data$status == 'future',])
+# index of future dams
+fut_index <- dams_data$status == 'future'
+
+st <- Sys.time()
+cat('Starting optimization on', as.character(st), '\n\n')
+
+# try the function
+# calc_objs(rep(1,n))
+# calc_objs(rep(0,n))
+
+# define number of objectives based on settings
+nobjs <- sum(sedimentation,fragmentation,water,energy)
+
+# save the right variables in the output name
+save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
+
+# run the optimization
+st <- Sys.time()
+op <- rmoo::nsga2(
+  type = 'binary', nBits = n, fitness = calc_objs,
+  popSize = pop_size,
+  nObj = nobjs,
+  pcrossover = 0.8,
+  pmutation = 0.2,
+  maxiter = gen_size,
+  suggestions = rbind(rep(1,n),rep(0,n)),
+  summary = FALSE,
+  monitor = MONITOR,
+  names = save_str
+)
+Sys.time() - st
+
+
+cat('\nSaving..')
+saveRDS(op,paste0('proc/nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+
+et <- Sys.time() - st
+cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
+
+
+
 
 cat('# -E-vissero-tutti-felici-e-contenti----------------------------------#\n')

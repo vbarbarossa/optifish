@@ -60,7 +60,7 @@ if(LOCAL) source('R/master_paths_local.R')
 source('R/functions_connectivity.R')
 
 # prepare the data for the optimization
-source('R/prepare_data.R')
+source('R/prepare_data_LMB.R')
 # ------------------------------------------------------------------------------
 
 # FITNESS FUNCTION -------------------------------------------------------------
