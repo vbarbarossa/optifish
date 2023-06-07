@@ -60,7 +60,7 @@ if(LOCAL) source('R/master_paths_local.R')
 source('R/functions_connectivity.R')
 
 # prepare the data for the optimization
-source('R/prepare_data_LMB.R')
+source('R/prepare_data_LMB_40sp.R')
 # ------------------------------------------------------------------------------
 
 # FITNESS FUNCTION -------------------------------------------------------------
@@ -191,67 +191,6 @@ dams_data$incl <- 1
 # convert to data frame
 dams_data <- as.data.frame(dams_data)
 
-# PROOF OF OPTIMALITY ----------------------------------------------------------
-for(gens in c(50,100,500,1000,5000,10000)){ #'pristine_pass_bin','pristine_pass_step','pristine_pass_lin'
-  
-  scen <- 'pristine'
-  cat('\n',scen,' RUN --------------------------------------------------------\n')
-  
-  # assign passability
-  dams_data$pass <- 0
-  
-  # dams_data$status <- 'current'
-  # dams_data$status[dams_data$Status == 'P'] <- 'future'
-  dams_data$status <- 'future' # set all dams to future
-  
-  # no species
-  n_sp <- round(sum(L) + sum(ld),0)
-  # no dams
-  n = nrow(dams_data[dams_data$status == 'future',])
-  # index of future dams
-  fut_index <- dams_data$status == 'future'
-  
-  st <- Sys.time()
-  cat('Starting optimization on', as.character(st), '\n\n')
-  
-  # try the function
-  # calc_objs(rep(1,n))
-  # calc_objs(rep(0,n))
-  
-  # define number of objectives based on settings
-  nobjs <- sum(sedimentation,fragmentation,water,energy)
-  
-  # save the right variables in the output name
-  save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
-  
-  # run the optimization
-  st <- Sys.time()
-  op <- rmoo::nsga2(
-    type = 'binary', nBits = n, fitness = calc_objs,
-    popSize = pop_size,
-    nObj = nobjs,
-    pcrossover = 0.8,
-    pmutation = 0.2,
-    maxiter = gens,
-    suggestions = rbind(rep(1,n),rep(0,n)),
-    summary = FALSE,
-    monitor = MONITOR,
-    names = save_str
-  )
-  Sys.time() - st
-  
-  
-  # plot(-op@fitness[,1],-op@fitness[,2])
-  
-  cat('\nSaving..')
-  saveRDS(op,paste0('proc/LMB_PROOFOPT_nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gens,'_pop',pop_size,'.rds'))
-  
-  et <- Sys.time() - st
-  cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
-}
-
-#-------------------------------------------------------------------------------
-
 
 # PRISTINE SCENARIOS -----------------------------------------------------------
 for(scen in c('pristine')){ #'pristine_pass_bin','pristine_pass_step','pristine_pass_lin'
@@ -308,7 +247,7 @@ for(scen in c('pristine')){ #'pristine_pass_bin','pristine_pass_step','pristine_
   # plot(-op@fitness[,1],-op@fitness[,2])
   
   cat('\nSaving..')
-  saveRDS(op,paste0('proc/LMB_nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+  saveRDS(op,paste0('proc/LMB40sp_nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
   
   et <- Sys.time() - st
   cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
@@ -364,7 +303,7 @@ Sys.time() - st
 # plot(-op@fitness[,1],-op@fitness[,2])
 
 cat('\nSaving..')
-saveRDS(op,paste0('proc/LMB_nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+saveRDS(op,paste0('proc/LMB40sp_nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
 
 et <- Sys.time() - st
 cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
@@ -373,7 +312,7 @@ cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
 
 
 # REMOVAL-MITIGATION SCENARIOS -------------------------------------------------
-for(s in 1:4){ #'mitigation_step','mitigation_lin'
+for(s in 1:2){ #'mitigation_step','mitigation_lin'
   
   scen <- c('removal','mitigation_bin30','mitigation_bin10','mitigation_bin50')[s]
   pass_scen <- c(0.3,0.3,0.1,0.5)[s]
@@ -390,7 +329,7 @@ for(s in 1:4){ #'mitigation_step','mitigation_lin'
   
   # pareto pristine
   save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
-  pp <- readRDS(paste0('proc/LMB_nsga2_pristine_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+  pp <- readRDS(paste0('proc/LMB40sp_nsga2_pristine_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
   
   # find row with most similar IC to ICmax
   ICmax_row <- which(-pp@fitness[,1] <= ICmax)
@@ -463,7 +402,7 @@ for(s in 1:4){ #'mitigation_step','mitigation_lin'
   
   
   cat('\nSaving..')
-  saveRDS(op,paste0('proc/LMB_nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+  saveRDS(op,paste0('proc/LMB40sp_nsga2_',scen,'_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
   
   et <- Sys.time() - st
   cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
