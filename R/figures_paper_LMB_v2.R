@@ -26,17 +26,20 @@ main_bas_id <- outlet <- 4120017020 #this corresponds to the outlet!
 source('R/prepare_data_LMB.R')
 
 # simplify dams table for fitness function
-dams_data <- dams[,c('Code','INTER_ID','Status','DamHeight','COD',name_col_IC, name_col_V)] %>% rename(ReferenceY = 'COD')
-dams_data$ReferenceY[dams_data$ReferenceY == 0] <- min(dams_data$ReferenceY[dams_data$ReferenceY != 0])
+dams_data <- left_join(
+  dams[,c('Code','INTER_ID','Status','DamHeight',name_col_IC, name_col_V)],
+  # use manually adjusted operation year, called ReferenceY for backwards compatibility
+  read.csv('data/dams_adjusted_year.csv') %>% select(Code,ReferenceY = 'COD_adj', Status_adj)
+)
 
-# temporarily 
+# check
+dams_data %>% group_by(Status) %>% summarise(minY = min(ReferenceY), maxY = max(ReferenceY))
+dams_data %>% group_by(Status_adj) %>% summarise(minY = min(ReferenceY), maxY = max(ReferenceY))
 
 
 # # assign passability
 dams_data$pass <- 0
 
-# lots of P dams have reference year = 2007 or higher
-dams_data$ReferenceY[dams_data$Status == 'P'] <- 2050
 dams_e <- dams_data[dams_data$Status != 'P',]
 dams_f <- dams_data[dams_data$Status == 'P',]
 
@@ -44,8 +47,7 @@ dams_f <- dams_data[dams_data$Status == 'P',]
 n_sp <- round(sum(L) + sum(ld),0)
 
 # no dams
-n = nrow(dams_f)
-n = n + nrow(dams_e)
+n = nrow(dams_f) + nrow(dams_e)
 
 sedimentation = F
 fragmentation = T
@@ -117,7 +119,8 @@ calc_objs <-
     
   }
 
-dams_e$ReferenceY <- as.numeric(make.unique(as.character(dams_e$ReferenceY)))
+
+dams_e <- dams_data
 years_range <- sort(dams_e$ReferenceY)
 op_pres <- foreach(i = years_range,.combine = 'rbind') %do% {
   -calc_objs(c(as.integer(dams_e$ReferenceY <= i),rep(0,nrow(dams_f))))
@@ -131,7 +134,7 @@ op_pres$year <- c(years_range)
 gen_size <- 1000
 
 # ,'pristine_pass_bin','pristine_pass_step','future','removal','mitigation_bin','mitigation_step'
-op <- foreach(i = c('pristine','future','removal','mitigation_bin30'),.combine = 'rbind') %do% {
+op <- foreach(i = c('pristine','future','removal_bin30','mitigation_bin30'),.combine = 'rbind') %do% {
   
   t1 <- readRDS(paste0('proc/LMB_nsga2_',i,'_ic_ci_gen',gen_size,'_pop100.rds'))
   t1 <- -t1@fitness %>% as.data.frame()
@@ -140,20 +143,32 @@ op <- foreach(i = c('pristine','future','removal','mitigation_bin30'),.combine =
 }
 colnames(op)[1:2] <- c('ic','ci')
 op$year <- ''
+
+# check current dams
+ggplot(op_pres) +
+  geom_point(aes(x = ic, y = ci))
+
+ggplot(op_pres,aes(x = ic, y = ci, label = year)) +
+  geom_point() +
+  ggrepel::geom_text_repel(force = 1, direction = 'both',
+                           max.iter = 1000000, max.overlaps = 50,
+                           box.padding = unit(5,'mm'),
+                           point.padding = unit(2,'mm'),
+                           show.legend = F,
+                           size = 3)
+# flag 1994,2016, 2019.8
+
 op <- rbind(op_pres,op)
 
 op$scenario[op$scenario == 'mitigation_bin30'] <- 'mitigation_bin'
+op$scenario[op$scenario == 'removal_bin30'] <- 'removal'
 
 op$scenario <- factor(op$scenario, levels = c('pristine','pristine_pass_bin','pristine_pass_step','present','future','removal','mitigation_bin','mitigation_step'))
 op$ci <- op$ci*100
 
-# create table for confidence intervals
-# op$ci_up <- NA
-# op$ci_lo <- NA
-# op$ci_up <- -readRDS('proc/LMB_nsga2_mitigation_bin50_ic_ci_gen1000_pop100.rds')@fitness %>% as.data.frame()
-
+# confidence interval tables
 j=1
-op_confint <- foreach(i = c('mitigation_bin10','mitigation_bin50'),.combine = 'rbind') %do% {
+op_confint_mit <- foreach(i = c('mitigation_bin10','mitigation_bin50'),.combine = 'rbind') %do% {
   
   t1 <- readRDS(paste0('proc/LMB_nsga2_',i,'_ic_ci_gen',gen_size,'_pop100.rds'))
   t1 <- -t1@fitness %>% as.data.frame()
@@ -165,72 +180,43 @@ op_confint <- foreach(i = c('mitigation_bin10','mitigation_bin50'),.combine = 'r
   return(t1)
   
 }
-row.names(op_confint) <- 1:nrow(op_confint)
+row.names(op_confint_mit) <- 1:nrow(op_confint_mit)
 
+j=1
+op_confint_rem <- foreach(i = c('removal_bin50','removal_bin10'),.combine = 'rbind') %do% {
+  
+  t1 <- readRDS(paste0('proc/LMB_nsga2_',i,'_ic_ci_gen',gen_size,'_pop100.rds'))
+  t1 <- -t1@fitness %>% as.data.frame()
+  t1 <- t1[order(t1$V1, decreasing = c(F,T)[j]),]
+  t1$V2 <- t1$V2*100
+  # colnames(t1)[1:2] <- c(paste0(i,'_ic'),paste0(i,'_ci'))
+  colnames(t1)[1:2] <- c('ic','ci')
+  j=j+1
+  return(t1)
+  
+}
+row.names(op_confint_rem) <- 1:nrow(op_confint_rem)
+
+# check confidence intervals
 ggplot() +
-  geom_polygon(data = op_confint,aes(x = ic, y = ci),color = 'gray90',alpha = 0.3) +
-  geom_point(data = op_confint,aes(x = ic, y = ci),color = 'gray50',alpha = 1) +
+  geom_polygon(data = op_confint_mit,aes(x = ic, y = ci),color = 'gray90',alpha = 0.3) +
+  geom_point(data = op_confint_mit,aes(x = ic, y = ci),color = 'gray50',alpha = 1) +
   geom_point(data = op %>% filter(scenario == 'mitigation_bin'),aes(x=ic,y=ci)) +
   theme_bw()
 
+ggplot() +
+  geom_polygon(data = op_confint_rem,aes(x = ic, y = ci),color = 'gray90',alpha = 0.3) +
+  geom_point(data = op_confint_rem,aes(x = ic, y = ci),color = 'gray50',alpha = 1) +
+  geom_point(data = op %>% filter(scenario == 'removal'),aes(x=ic,y=ci)) +
+  theme_bw()
 
 
-# Figure 1 #####################################################################
-# create framework where following data are supplied:
-# - pareto front dataset 
-# - points for which to map dams
-vars = c('pristine','present','future','removal','mitigation_bin')
-shapes = c(21,21,21,21,21)
-colors = RColorBrewer::brewer.pal(8,'Dark2')[1:length(vars)]
-colors[2] <- 'grey30'
-colors[4:5] <- c('red','blue')
-fills = c('white',colors[2],'white','white','white')
-# colors = c('black','grey60','red')
-op_p <- op %>% filter(scenario %in% vars)
-op_p <- rbind(data.frame(ic = 0, ci = 100, scenario = 'present', year = ''),op_p)
-op_p$scenario <- factor(op_p$scenario,levels = vars)
-levels(op_p$scenario) <- c('pristine','present','future','removal','mitigation')
-p_pareto <- ggplot() +
-  geom_polygon(data = op_confint,aes(x = ic, y = ci),color = 'gray80',alpha = 0.5) +
-  geom_step(data = op_p,
-            aes(x = ic, y = ci, color = scenario, shape = scenario, label = year),direction = 'hv', show.legend = F) +
-  geom_point(data = op_p,
-             aes(x = ic, y = ci, color = scenario, shape = scenario, label = year),alpha = 1, size = 2, fill = 'white') +
-  # ggrepel::geom_text_repel(force = 1, direction = 'both', max.iter = 100000) +
-  # geom_text(hjust=1, vjust=1) +
-  scale_shape_manual(values = shapes) +
-  scale_color_manual(values = colors) +
-  # scale_fill_manual(values = fills) +
-  labs(step='') +
-  xlab('Installed Capacity [MW]') +
-  ylab('Connectivity Index [%]') +
-  scale_x_continuous(labels = function(x) format(x, scientific = TRUE)) +
-  coord_cartesian(expand = T) +
-  theme_bw() +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_blank(),
-        axis.line = element_line(),
-        legend.position = c(0.15,0.2), 
-        legend.title = element_blank(),
-        legend.direction = 'vertical',
-        legend.background = element_blank(),
-        strip.background = element_blank(), 
-        strip.placement = 'outside',
-        text = element_text(size = 14)
-  )
-p_pareto
+# Figure 2 #####################################################################
+# pareto fronts
+# A - missed opportunities
+# B - mitigation scenarios
 
-# plot dams for current and pristine situation
-# existing dams, shape = 22; future dams, shape = 23
-
-# determine IDs of 
-# - Existing (E)
-# - Future (F)
-# - Pristine set corresponfing with IC of all existing dams (P1)
-# - M scenario (M1) and dams retrofitted (Mit)
-# - R scenario (R1) and dams removed (Rem)
-# (modified after optimize_rmoo_scenarios)
-
+# First identify dam configuration for specific points on the pareto front
 dams_data$status <- 'current'
 dams_data$status[dams_data$Status == 'P'] <- 'future'
 
@@ -255,31 +241,33 @@ ICmax <- sum(pull(dams_data[dams_data$status == 'current',],name_col_IC))
 # pareto pristine
 pp <- readRDS(paste0('proc/LMB_nsga2_pristine_ic_ci_gen',gen_size,'_pop100.rds'))
 
-# P1
+# P1 = B1
 ICmax_row <- which(abs(-pp@fitness[,1] - ICmax) == min(abs(-pp@fitness[,1] - ICmax)))
 v_incl <- pp@population[ICmax_row,]
 ID_P1 <- dams_data$Code[v_incl == 1]
 
-# R1
+# R1 = SPRR0
 ICmax_row <- which(-pp@fitness[,1] <= ICmax)
 v_incl <- apply(pp@population[ICmax_row,],2,sum)
-
 ID_Rem <- dams_data$Code[v_incl == 0 & dams_data$status == 'current']
 ID_R1 <- ID_E[!ID_E %in% ID_Rem]
 
-# M1
-# ID_Mit <- dams_data$Code[v_incl == 0 & dams_data$status == 'current']
+# M1 = SPR0
 ID_Mit <- dams_data$Code[dams_data$pass > 0]
 ID_Mit <- ID_Mit[-which(ID_Mit %in% dams_data$Code[v_incl != 0 & dams_data$status == 'current'])]
-
 ID_M1 <- ID_E
 
-
+# make tables for ggplot
+vars = c('pristine','present','future','removal','mitigation_bin')
+op_p <- op %>% filter(scenario %in% vars)
+op_p <- rbind(data.frame(ic = 0, ci = 100, scenario = 'present', year = ''),op_p)
+op_p$scenario <- factor(op_p$scenario,levels = vars)
+levels(op_p$scenario) <- c('pristine','present','future','removal','mitigation')
 
 op_p_pres <- op_p %>%
   filter(scenario == 'present') %>%
   mutate(lab = '')
-op_p_pres$lab[op_p_pres$year %in% c(1996,2009,2011)] <- c(1996,2008,'E1')
+op_p_pres$lab[op_p_pres$year %in% c(1994,2016,2019.8,2020.3)] <- c(1994,2016,2019,'E1')
 
 op_p_pri <- op_p %>% filter(scenario == 'pristine') %>%
   mutate(lab = '')
@@ -297,25 +285,30 @@ op_plot <- rbind(op_p %>% filter(scenario == 'future') %>%
                    mutate(lab = ''),
                  op_p_pres,op_p_pri,op_p_rem,op_p_mit)
 
-levels(op_plot$scenario) <- c('benchmark','existing','planned','removal','mitigation')
+op_plot$scenario <- as.character(op_plot$scenario)
+op_plot$scenario[op_plot$scenario == 'future'] <- 'strategic'
+op_plot$scenario[which(as.numeric(op_plot$year) >= 2021)] <- 'future'
+op_plot$scenario <- as.factor(op_plot$scenario)
+
+levels(op_plot$scenario) <- c('planned','mitigation','existing','benchmark','removal','strategic')
+
+op_plot <- foreach(s = levels(op_plot$scenario),.combine = 'rbind') %do% return(op_plot %>% filter(scenario == s))
+
 
 op_plot$fill[(op_plot$lab != '') & is.na(as.numeric(op_plot$lab))] <- as.character(op_plot$scenario[(op_plot$lab != '') & is.na(as.numeric(op_plot$lab))])
 op_plot$fill <- as.factor(op_plot$fill)
-# levels(op_plot$fill) <- levels(op_plot$scenario)
-# op_plot$fill[is.na(op_plot$fill)]
-
 op_plot <- rbind(op_plot[is.na(op_plot$fill),],op_plot[!is.na(op_plot$fill),])
-# op_plot <- rbind(op_plot,op_plot[!is.na(op_plot$fill),])
 
-fills <- paletteer::paletteer_c("viridis::inferno", 4)[1:3]
-fills[3] <- '#CD4347'
-fills[1] <- 'grey40'
-op_plot$scenario <- factor(op_plot$scenario,c("benchmark" , "existing"  , "planned"  , "mitigation", "removal"   ))
-levels(op_plot$fill) <- levels(op_plot$scenario)[-3]
-p_pareto_fut <- ggplot(data = op_plot %>% filter(!scenario %in% c('mitigation','removal')),
+# aesthetics
+fills <- c('grey40','black','white')
+
+op_plot$ic <- op_plot$ic/1000
+op_plot$scenario <- factor(op_plot$scenario,c("benchmark" , "existing"  , "planned"  , "strategic", "mitigation", "removal"   ))
+# levels(op_plot$fill) <- levels(op_plot$scenario)[-3]
+p_pareto_fut <- ggplot(data = op_plot %>% filter(!scenario %in% c('mitigation','removal','strategic')),
                        aes(x = ic, y = ci, color = fill, label = lab,
                            fill = scenario)) +
-  geom_step(data = op_plot %>% filter(scenario == c('existing')),direction = 'hv', show.legend = F, linetype = 2) +
+  geom_step(data = op_plot %>% filter(scenario %in% c('existing','planned')),direction = 'hv', show.legend = F, linetype = 2) +
   geom_point(alpha = 1, size = 2, shape = 21) +
   ggrepel::geom_text_repel(force = 1, direction = 'both',
                            max.iter = 1000000, max.overlaps = 100,
@@ -326,9 +319,9 @@ p_pareto_fut <- ggplot(data = op_plot %>% filter(!scenario %in% c('mitigation','
   scale_fill_manual(values = fills) +
   scale_color_manual(values = rep('red',2),na.value = 'black') +
   labs(step='') +
-  xlab('Installed Capacity [MW]') +
+  xlab('Installed Capacity [GW]') +
   ylab('Connectivity Index [%]') +
-  scale_x_continuous(labels = function(x) format(x, scientific = TRUE)) +
+  # scale_x_continuous(labels = function(x) format(x, scientific = TRUE)) +
   coord_cartesian(expand = T) +
   theme_bw() +
   guides(color = 'none') +
@@ -345,26 +338,41 @@ p_pareto_fut <- ggplot(data = op_plot %>% filter(!scenario %in% c('mitigation','
   )
 p_pareto_fut
 
+op_confint_mit$ic <- op_confint_mit$ic/1000
+op_confint_rem$ic <- op_confint_rem$ic/1000
+
 op_plot2 <- op_plot
-fills <- paletteer::paletteer_c("viridis::inferno", 4)
-fills[4] <- '#FAC42A'
-fills[1] <- 'grey40'
-op_plot2$scenario <- factor(op_plot2$scenario,c("benchmark" , "existing"  , "planned"  , "mitigation", "removal"   ))
+
+# op_plot2$scenario <- as.character(op_plot2$scenario)
+# op_plot2$scenario[op_plot2$scenario %in% c("benchmark" , "existing"  , "planned")] <- 'all'
+# op_plot2$scenario <- as.factor(op_plot2$scenario)
+
+# add greens for the mitigation scenarios
+fills <- c(c('grey40','black','white'),
+           RColorBrewer::brewer.pal(3,'Greens'))
 
 # remove highlight from points aready in fut
-op_plot2$fill[op_plot2$lab %in% c('1996','2008','E1','B1')] <- NA
-op_plot2$lab[op_plot2$lab %in% c('1996','2008','E1','B1')] <- ''
+op_plot2$fill[op_plot2$lab %in% c(1994,2016,2019,'E1','B1')] <- NA
+op_plot2$lab[op_plot2$lab %in% c(1994,2016,2019,'E1','B1')] <- ''
 
+op_plot2$a <- 1
+op_plot2$a[!op_plot2$scenario %in% c("benchmark" , "existing"  , "planned")] <- 2
+op_plot2$a <- as.character(op_plot2$a)
+op_plot2$a <- factor(op_plot2$a, levels = c("1","2"))
+
+op_plot2 <- foreach(s = levels(op_plot2$scenario),.combine = 'rbind') %do% return(op_plot2 %>% filter(scenario == s))
 
 p_pareto_mit <- ggplot() +
-  geom_polygon(data = op_confint,aes(x = ic, y = ci),fill = '#ED6925FF',alpha = 0.5) +
-  # geom_point(data = op_confint,aes(x = ic, y = ci),alpha = 0.7, size = 1, shape = 21, color = '#ED6925FF',fill = '#ED6925FF') +
-  geom_step(data = op_plot2 %>% filter(scenario == c('existing')),aes(x = ic, y = ci, label = lab, color = fill,
-                                                                      fill = scenario),direction = 'hv', show.legend = F, linetype = 2) +
-  geom_point(data = op_plot2 %>% filter(scenario != 'planned'),aes(x = ic, y = ci, label = lab, color = fill,
-                                                                   fill = scenario),alpha = 1, size = 2, shape = 21) +
-  ggrepel::geom_text_repel(data = op_plot2 %>% filter(scenario != 'planned'),aes(x = ic, y = ci, label = lab, color = fill,
-                                                                                 fill = scenario),force = 1, direction = 'both',
+  geom_polygon(data = op_confint_mit,aes(x = ic, y = ci),fill = fills[5],alpha = 0.5) +
+  geom_polygon(data = op_confint_rem,aes(x = ic, y = ci),fill = fills[6],alpha = 0.5) +
+  geom_step(data = op_plot2 %>% filter(scenario %in% c('existing','planned')),
+            aes(x = ic, y = ci),
+            direction = 'hv', show.legend = F, linetype = 2, alpha = 0.3) +
+  geom_point(data = op_plot2,
+             aes(x = ic, y = ci, color = fill, alpha = a,
+                 fill = scenario), size = 2, shape = 21) +
+  
+  ggrepel::geom_text_repel(data = op_plot2 %>% filter(scenario != 'planned'),aes(x = ic, y = ci, label = lab, color = fill),force = 1, direction = 'both',
                            max.iter = 1000000, max.overlaps = 100,
                            box.padding = unit(5,'mm'),
                            point.padding = unit(2,'mm'),
@@ -372,17 +380,18 @@ p_pareto_mit <- ggplot() +
                            size = 3) +
   scale_fill_manual(values = fills) +
   scale_color_manual(values = rep('red',2),na.value = 'black') +
+  scale_alpha_manual(values = c(0.3,1)) +
   labs(step='') +
-  xlab('Installed Capacity [MW]') +
+  xlab('Installed Capacity [GW]') +
   ylab('Connectivity Index [%]') +
-  scale_x_continuous(labels = function(x) format(x, scientific = TRUE)) +
   coord_cartesian(expand = T) +
   theme_bw() +
-  guides(color = 'none') +
+  # guides(color = 'none', alpha = 'none') +
   theme(panel.grid = element_blank(), 
         panel.border = element_blank(),
         axis.line = element_line(),
-        legend.position = c(0.15,0.2), 
+        # legend.position = c(0.15,0.2), 
+        # legend.position = 'none', 
         legend.title = element_blank(),
         legend.direction = 'vertical',
         legend.background = element_blank(),
@@ -391,6 +400,9 @@ p_pareto_mit <- ggplot() +
         text = element_text(size = 14)
   )
 p_pareto_mit
+
+
+
 
 
 # SPATIA DATA
@@ -449,14 +461,18 @@ tplot <- rbind(tP,tE,tR,tM)
 tplot$incl <- as.factor(tplot$incl)
 tplot$rem <- as.factor(tplot$rem)
 tplot$mit <- as.factor(tplot$mit)
-tplot$scen <- factor(tplot$scen,levels=c('P1','E1','M1','R1'))
+tplot$scen <- factor(tplot$scen,levels=c('E1','P1','M1','R1'))
 tplot$status <- as.factor(tplot$status)
 levels(tplot$status) <- c("existing"  ,  "planned"   ,   "removed"   ,  "retrofitted")
-tplot$scen <- factor(tplot$scen,levels = c('P1','E1','M1','R1'))
+# tplot$scen <- factor(tplot$scen,levels = c('P1','E1','M1','R1'))
 
-fills <- paletteer::paletteer_c("viridis::inferno", 4)
-fills[1] <- 'grey40'
-fills[4] <- '#FAC42A'
+# fills <- paletteer::paletteer_c("viridis::inferno", 4)
+# fills[1] <- 'grey40'
+# fills[4] <- '#FAC42A'
+
+fills <- c(c('grey40','black'),
+           RColorBrewer::brewer.pal(4,'Greens')[3:4])
+tplot$scen <- factor(case_match(tplot$scen, 'E1' ~ 'P0', 'P1' ~ 'B1', 'M1' ~ 'SPR0', 'R1' ~ 'SPRR0'), levels = c( 'P0', 'B1', 'SPR0', 'SPRR0'))
 
 p_maps <- ggplot() +
   geom_sf(data = bas, color = 'white',fill='grey90') + #no border
@@ -467,7 +483,7 @@ p_maps <- ggplot() +
   geom_sf(data = riv5,lwd = 1.2,color = 'grey40') +
   geom_sf(data = tplot %>% filter(!(incl==0 & status != 'removed')), 
           aes(size = InstalledC, fill = incl, color = status, shape = status),alpha = 1) +
-  scale_shape_manual(values = c(21,21,4,23)) +
+  scale_shape_manual(values = c(21,21,4,21)) +
   scale_fill_manual(values = c('red',fills)) +
   scale_color_manual(values = c('black','black','red','red')) +
   # scale_color_manual(values = c('black','red')) +
@@ -484,103 +500,95 @@ p_maps <- ggplot() +
     axis.ticks = element_blank(),
     strip.background.x = element_blank(),
     strip.background.y = element_blank(),
-    # strip.text = element_text(hjust = 0, face = 'bold', color = 'grey40'),
-    strip.text = element_blank(),
+    strip.text = element_text(hjust = 0, color = 'black'),
+    # strip.text = element_blank(),
     panel.background = element_blank(),
     legend.position = 'none', panel.spacing.x = unit(-2, "lines"),
     legend.background = element_blank()
   )
 p_maps
 
-# library(patchwork)
-# # layout <- "
-# # ##BBBB
-# # AACCDD
-# # ##CCDD
-# # "
-# layout <- "
-# AAACCC
-# AAACCC
-# AAACCC
-# BBBCCC
-# BBBCCC
-# BBBCCC
-# "
-# p_save <- p_pareto_fut + 
-#   theme(legend.position = 'none',
-#         legend.background = element_blank(),
-#         text = element_text(size=10),
-#         legend.key.height = unit(3,'mm'),
-#         plot.margin = unit(c(0,.3,0,.1), "cm")) +
-#   coord_fixed(100000/100) +
-#   
-#   p_pareto_mit + 
-#   theme(legend.position = 'none',
-#         legend.background = element_blank(),
-#         text = element_text(size=10),
-#         legend.key.height = unit(3,'mm'),
-#         plot.margin = unit(c(0,.3,0,.1), "cm")) +
-#   coord_fixed(100000/100) +
-#   
-#   p_maps + 
-#   theme(plot.margin = unit(c(0,0,0,0), "cm"),
-#         legend.key.height = unit(1,'mm')) +
-#   plot_layout(design = layout)
-# p_save
-# ggsave('figs/Figure2/pareto_fut.pdf',
-#        p_pareto_fut + 
-#          theme(legend.position = c(0.18,0.2),
-#                legend.background = element_blank(),
-#                text = element_text(size=10),
-#                legend.key.height = unit(3,'mm'),
-#                plot.margin = unit(c(0,.3,0,.1), "cm")) +
-#          coord_fixed(100000/100),
-#        width = 80, height = 80, units = 'mm', scale = 1.1)
-# ggsave('figs/Figure2/pareto_mit.pdf',
-#        p_pareto_mit + 
-#          theme(legend.position = c(0.18,0.2),
-#                legend.background = element_blank(),
-#                text = element_text(size=10),
-#                legend.key.height = unit(3,'mm'),
-#                plot.margin = unit(c(0,.3,0,.1), "cm")) +
-#          coord_fixed(100000/100),
-#        width = 80, height = 80, units = 'mm', scale = 1.1)
-# ggsave('figs/Figure2/maps.pdf',
-#        p_maps + 
-#          theme(plot.margin = unit(c(0,0,0,0), "cm"),
-#                legend.key.height = unit(1,'mm')),
-#        width = 140, height = 100, units = 'mm', scale = 1.1)
 
 p_pareto_and_maps <- cowplot::plot_grid(
   cowplot::plot_grid(
     p_pareto_fut + 
-      theme(legend.position = c(0.18,0.2),
-            legend.background = element_blank(),
-            text = element_text(size=10),
-            legend.key.height = unit(3,'mm'),
-            plot.margin = unit(c(0,0.2,0,0.2), "cm")) +
-      coord_fixed(100000/250),
+      theme(
+        legend.position = 'none',
+        legend.background = element_blank(),
+        text = element_text(size=10),
+        legend.key.height = unit(3,'mm'),
+        plot.margin = unit(c(0,0.2,0,0.2), "cm")) +
+      coord_fixed(2/5),
     p_pareto_mit + 
-      theme(legend.position = c(0.18,0.2),
-            legend.background = element_blank(),
-            text = element_text(size=10),
-            legend.key.height = unit(3,'mm'),
-            plot.margin = unit(c(0,0.2,0,0.2), "cm")) +
-      coord_fixed(100000/250), ncol = 1
+      theme(
+        # legend.position = c(0.18,0.2),
+        legend.position = 'none',
+        legend.background = element_blank(),
+        text = element_text(size=10),
+        legend.key.height = unit(3,'mm'),
+        plot.margin = unit(c(0,0.2,0,0.2), "cm")) +
+      coord_fixed(2/5), 
+    ncol = 1, 
+    labels = c('A) Missed opportunities', 'B) Mitigation options'),
+    label_fontface = 'plain',
+    label_x = 0,
+    label_size = 10
   ),
   p_maps + 
     theme(plot.margin = unit(c(0,0,0,-1), "cm"),
           legend.key.height = unit(1,'mm')),
   ncol = 2,
   rel_widths = c(1,1.1),
-  
   align = 'hv'
 )
+
+
+
 ggsave('figs/fig2.pdf',p_pareto_and_maps,
        width = 160, height = 170, units = 'mm', scale = 1.1)
 
+# legend
+p_maps <- ggplot() +
+  geom_sf(data = bas, color = 'white',fill='grey90') + #no border
+  geom_sf(data = riv1,lwd = 0.01,color = 'grey40') +
+  geom_sf(data = riv2,lwd = 0.3,color = 'grey40') +
+  geom_sf(data = riv3,lwd = 0.6,color = 'grey40') +
+  geom_sf(data = riv4,lwd = 0.9,color = 'grey40') +
+  geom_sf(data = riv5,lwd = 1.2,color = 'grey40') +
+  geom_sf(data = tplot %>% filter(!(incl==0 & status != 'removed')) %>% mutate(InstalledC = InstalledC/1000), 
+          aes(size = InstalledC, fill = incl, color = status, shape = status),alpha = 1) +
+  scale_shape_manual(values = c(21,21,4,21)) +
+  scale_fill_manual(values = c('red',fills)) +
+  scale_color_manual(values = c('black','black','red','red')) +
+  # scale_color_manual(values = c('black','red')) +
+  scale_size_continuous(range = c(1,3)) +
+  guides(fill='none') +
+  labs(size = '',shape = '',color='') +
+  facet_wrap('scen',ncol=2) +
+  theme_bw() +
+  theme(
+    text = element_text(size = 10),
+    panel.grid = element_line(colour = 'transparent'),
+    panel.border = element_blank(),
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    strip.background.x = element_blank(),
+    strip.background.y = element_blank(),
+    strip.text = element_text(hjust = 0, color = 'black'),
+    # strip.text = element_blank(),
+    panel.background = element_blank(),
+    # legend.position = 'none', 
+    legend.key.height = unit(3,'mm'),
+    panel.spacing.x = unit(-2, "lines"),
+    legend.background = element_blank()
+  )
+
+ggsave('figs/fig2_legend1.pdf',ggpubr::as_ggplot(ggpubr::get_legend(p_maps)))
+ggsave('figs/fig2_legend2.pdf',ggpubr::as_ggplot(ggpubr::get_legend(p_pareto_mit)))
+
+
 ################################################################################
-# FIGURE 3 #####################################################################
+# FIGURE S #####################################################################
 tP <- dams_sp
 tP$incl[tP$Code %in% ID_P1] <- 1
 tP$scen <- 'P1'
@@ -674,7 +682,7 @@ ggsave('figs/barchart_ICbycountry.pdf',barchart,
        width = 80, height = 80, units = 'mm', scale = 1.2)
 
 ################################################################################
-# FIGURE 2 #####################################################################
+# FIGURE 3 #####################################################################
 # Inclusion probability maps for
 # - Pristine (main map)
 # - R, M, F: 3 smaller maps
@@ -699,7 +707,7 @@ incl_F <- calc_incl(readRDS(paste0('proc/LMB_nsga2_future_ic_ci_gen',gen_size,'_
                     dams_data$Code[dams_data$status == 'future'])
 incl_M <- calc_incl(readRDS(paste0('proc/LMB_nsga2_mitigation_bin30_ic_ci_gen',gen_size,'_pop100.rds')),
                     dams_data$Code[dams_data$status == 'future'])
-incl_R <- calc_incl(readRDS(paste0('proc/LMB_nsga2_removal_ic_ci_gen',gen_size,'_pop100.rds')),
+incl_R <- calc_incl(readRDS(paste0('proc/LMB_nsga2_removal_bin30_ic_ci_gen',gen_size,'_pop100.rds')),
                     dams_data$Code[dams_data$status == 'future'])
 
 # master incl table
@@ -748,7 +756,7 @@ tR$scen <- 'Removal'
 tM <- left_join(dams_sp,incl_M)
 tM$incl[tM$Code %in% ID_M1] <- 4
 tM$rem[tM$Code %in% ID_Mit] <- 2
-tM$status[tM$Code %in% ID_Mit] <- 'retrofitted'
+# tM$status[tM$Code %in% ID_Mit] <- 'retrofitted'
 tM$scen <- 'Mitigation'
 
 
@@ -757,10 +765,12 @@ tplot$incl_prob[is.na(tplot$incl_prob)] <- -1 # assign different color
 tplot$incl <- as.factor(tplot$incl)
 tplot$rem <- as.factor(tplot$rem)
 tplot$mit <- as.factor(tplot$mit)
-tplot$scen <- factor(tplot$scen,levels=c('Pristine','Future','Removal','Mitigation'))
-levels(tplot$scen) <- c('Benchmark','Future','Removal','Mitigation')
+tplot$scen <- factor(tplot$scen,levels=c('Pristine','Future','Mitigation','Removal'))
+levels(tplot$scen) <- c('a) Benchmark (B)','b) Low Policy (S)','c) Medium Policy (SP)','d) High Policy (SPR)')
 tplot$status <- as.factor(tplot$status)
-levels(tplot$status) <- c("existing"  ,  "planned"  ,    "removed"   ,  "retrofitted")
+levels(tplot$status) <- c("existing"  ,  "planned"  ,    "removed")
+# tplot$status <- factor(tplot$status, levels = c("existing"  ,  "planned"  ,  "passage", "removed"  ))
+
 (p_incl <- ggplot() +
     geom_sf(data = bas, color = NA,fill='grey90') + #no border
     geom_sf(data = riv1,lwd = 0.1,color = 'grey40') +
@@ -769,14 +779,14 @@ levels(tplot$status) <- c("existing"  ,  "planned"  ,    "removed"   ,  "retrofi
     geom_sf(data = riv4,lwd = 0.9,color = 'grey40') +
     geom_sf(data = riv5,lwd = 1.2,color = 'grey40') +
     geom_sf(data = tplot, 
-            aes(size = InstalledC,fill = incl_prob, shape = status, color = status), 
+            aes(size = InstalledC,fill = incl_prob, shape = status, color = rem), 
             alpha = 1) +
     scale_fill_viridis_c(option = 'A', limits = c(0,100),
                          breaks = c(0, 25,50,75,100),labels = c(0,25,50,75,100),
                          begin = 0, end = 1) +
-    scale_shape_manual(values = c(22,24,4,23)) +
+    scale_shape_manual(values = c(22,24,4)) +
     scale_size_continuous(range = c(1,3)) +
-    scale_color_manual(values = c('black','black','red','red')) +
+    scale_color_manual(values = c('black','red','red')) +
     guides(size='none') +
     labs(
       fill = 'IP [%]',
@@ -795,7 +805,8 @@ levels(tplot$status) <- c("existing"  ,  "planned"  ,    "removed"   ,  "retrofi
       strip.background.x = element_blank(),
       strip.background.y = element_blank(),
       strip.text = element_text(hjust = 0),
-      legend.position = 'bottom', legend.direction = 'horizontal',
+      legend.position = 'bottom', legend.justification = "left",
+      legend.direction = 'vertical',
       legend.background = element_blank(),
       # legend.spacing.x = unit(2, 'mm'),
       panel.spacing = unit(-2.5, "lines")

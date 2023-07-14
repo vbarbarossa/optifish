@@ -55,7 +55,7 @@ st <- Sys.time()
 dams <- read_sf(dams_file) %>%
   # filter(Status %in% c('E','C')) %>%
   st_transform(4326)
-dams <- st_intersection(dams,hb_data %>% dplyr::select(HYBAS_ID)) %>% as_tibble() %>% dplyr::select(-geom)
+dams <- st_intersection(dams,hb_data %>% dplyr::select(HYBAS_ID,UP_AREA)) %>% as_tibble() %>% dplyr::select(-geom)
 
 
 # select dams hybas id for the current basin

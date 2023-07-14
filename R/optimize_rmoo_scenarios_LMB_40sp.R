@@ -312,10 +312,10 @@ cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
 
 
 # REMOVAL-MITIGATION SCENARIOS -------------------------------------------------
-for(s in 1:2){ #'mitigation_step','mitigation_lin'
+for(s in 1:6){ #'mitigation_step','mitigation_lin'
   
-  scen <- c('removal','mitigation_bin30','mitigation_bin10','mitigation_bin50')[s]
-  pass_scen <- c(0.3,0.3,0.1,0.5)[s]
+  scen <- c('removal_bin30','removal_bin10','removal_bin50','mitigation_bin30','mitigation_bin10','mitigation_bin50')[s]
+  pass_scen <- c(0.3,0.1,0.5,0.3,0.1,0.5)[s]
   
   cat('\n',scen,' RUN --------------------------------------------------------\n')
   
@@ -327,9 +327,9 @@ for(s in 1:2){ #'mitigation_step','mitigation_lin'
   # remove dams that are not in pristine runs <= present IC
   ICmax <- sum(pull(dams_data[dams_data$Status != 'P',],name_col_IC))
   
-  # pareto pristine
+  # pareto pristine <<< USE PP from ALL SPECIES SET, check with Rafa if it makes sense
   save_str <- c('ic','vol','sed','ci')[c(energy,water,sedimentation,fragmentation)]
-  pp <- readRDS(paste0('proc/LMB40sp_nsga2_pristine_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
+  pp <- readRDS(paste0('proc/LMB_nsga2_pristine_',paste(save_str,collapse = '_'),'_gen',gen_size,'_pop',pop_size,'.rds'))
   
   # find row with most similar IC to ICmax
   ICmax_row <- which(-pp@fitness[,1] <= ICmax)
@@ -339,13 +339,13 @@ for(s in 1:2){ #'mitigation_step','mitigation_lin'
   dams_data$status <- 'current'
   dams_data$status[dams_data$Status == 'P'] <- 'future'
   
-  if(scen == 'removal'){
+  if(scen %in% c('removal_bin30','removal_bin10','removal_bin50')){
     # remove dams to mitigate
     dams_data$incl[v_incl == 0 & dams_data$status == 'current'] <- 0
     # set future passability
     dams_data$pass[dams_data$status == 'future'] <- assign_passability_bin(dams_data$DamHeight[dams_data$status == 'future'],pass = pass_scen)
   } 
-  if(scen %in% c('mitigation_bin','mitigation_bin30','mitigation_bin10','mitigation_bin50')){
+  if(scen %in% c('mitigation_bin30','mitigation_bin10','mitigation_bin50')){
     # set passability for dams to mitigate
   dams_data$pass[(v_incl == 0) & (dams_data$status == 'current')] <- assign_passability_bin(height = dams_data$DamHeight[(v_incl == 0) & (dams_data$status == 'current')],pass = pass_scen)
   # set passability also for future dams
