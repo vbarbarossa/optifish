@@ -134,8 +134,14 @@ calc_objs <-
 
 # DAMS DATA FILTERING ----------------------------------------------------------
 
+# adjust status:
+dams_status_adjusted <- read.csv('data/dams_adjusted_year.csv')
+
 # simplify dams table for fitness function
-dams_data <- dams[,c('Code','INTER_ID','Status','DamHeight',name_col_IC, name_col_V)]
+dams_data <- left_join(
+  dams[,c('Code','INTER_ID','DamHeight',name_col_IC, name_col_V)],
+  dams_status_adjusted %>% select(Code, Status = 'Status_adj')
+)
 
 # binary function
 assign_passability_bin <- function(height,pass=0.3){

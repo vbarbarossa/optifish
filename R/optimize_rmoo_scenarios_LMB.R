@@ -134,8 +134,14 @@ calc_objs <-
 
 # DAMS DATA FILTERING ----------------------------------------------------------
 
+# adjust status:
+dams_status_adjusted <- read.csv('data/dams_adjusted_year.csv')
+
 # simplify dams table for fitness function
-dams_data <- dams[,c('Code','INTER_ID','Status','DamHeight',name_col_IC, name_col_V)]
+dams_data <- left_join(
+  dams[,c('Code','INTER_ID','DamHeight',name_col_IC, name_col_V)],
+  dams_status_adjusted %>% select(Code, Status = 'Status_adj')
+)
 
 # binary function
 assign_passability_bin <- function(height,pass=0.3){
@@ -373,7 +379,7 @@ cat('\nCompleted in',round(et,2), attr(et,'units'),'\n')
 
 
 # REMOVAL-MITIGATION SCENARIOS -------------------------------------------------
-for(s in 1:3){ #'mitigation_step','mitigation_lin'
+for(s in 1:6){ #'mitigation_step','mitigation_lin'
   
   scen <- c('removal_bin30','removal_bin10','removal_bin50','mitigation_bin30','mitigation_bin10','mitigation_bin50')[s]
   pass_scen <- c(0.3,0.1,0.5,0.3,0.1,0.5)[s]

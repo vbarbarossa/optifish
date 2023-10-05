@@ -36,6 +36,15 @@ dams_data <- left_join(
 dams_data %>% group_by(Status) %>% summarise(minY = min(ReferenceY), maxY = max(ReferenceY))
 dams_data %>% group_by(Status_adj) %>% summarise(minY = min(ReferenceY), maxY = max(ReferenceY))
 
+# adjust status:
+dams_status_adjusted <- read.csv('data/dams_adjusted_year.csv')
+
+# simplify dams table for fitness function
+dams_data <- left_join(
+  dams[,c('Code','INTER_ID','DamHeight',name_col_IC, name_col_V)],
+  dams_status_adjusted %>% select(Code, Status = 'Status_adj',ReferenceY = 'COD_adj')
+)
+
 
 # # assign passability
 dams_data$pass <- 0
@@ -310,12 +319,12 @@ p_pareto_fut <- ggplot(data = op_plot %>% filter(!scenario %in% c('mitigation','
                            fill = scenario)) +
   geom_step(data = op_plot %>% filter(scenario %in% c('existing','planned')),direction = 'hv', show.legend = F, linetype = 2) +
   geom_point(alpha = 1, size = 2, shape = 21) +
-  ggrepel::geom_text_repel(force = 1, direction = 'both',
-                           max.iter = 1000000, max.overlaps = 100,
-                           box.padding = unit(5,'mm'),
-                           point.padding = unit(2,'mm'),
-                           show.legend = F,
-                           size = 3) +
+  # ggrepel::geom_text_repel(force = 1, direction = 'both',
+  #                          max.iter = 1000000, max.overlaps = 100,
+  #                          box.padding = unit(5,'mm'),
+  #                          point.padding = unit(2,'mm'),
+  #                          show.legend = F,
+  #                          size = 3) +
   scale_fill_manual(values = fills) +
   scale_color_manual(values = rep('red',2),na.value = 'black') +
   labs(step='') +
@@ -341,6 +350,9 @@ p_pareto_fut
 op_confint_mit$ic <- op_confint_mit$ic/1000
 op_confint_rem$ic <- op_confint_rem$ic/1000
 
+write.csv(op_confint_mit,'tabs/figure2_data_confintSP.csv')
+write.csv(op_confint_rem,'tabs/figure2_data_confintSPP.csv')
+
 op_plot2 <- op_plot
 
 # op_plot2$scenario <- as.character(op_plot2$scenario)
@@ -349,7 +361,7 @@ op_plot2 <- op_plot
 
 # add greens for the mitigation scenarios
 fills <- c(c('grey40','black','white'),
-           RColorBrewer::brewer.pal(3,'Greens'))
+           RColorBrewer::brewer.pal(3,'YlGnBu'))
 
 # remove highlight from points aready in fut
 op_plot2$fill[op_plot2$lab %in% c(1994,2016,2019,'E1','B1')] <- NA
@@ -372,12 +384,12 @@ p_pareto_mit <- ggplot() +
              aes(x = ic, y = ci, color = fill, alpha = a,
                  fill = scenario), size = 2, shape = 21) +
   
-  ggrepel::geom_text_repel(data = op_plot2 %>% filter(scenario != 'planned'),aes(x = ic, y = ci, label = lab, color = fill),force = 1, direction = 'both',
-                           max.iter = 1000000, max.overlaps = 100,
-                           box.padding = unit(5,'mm'),
-                           point.padding = unit(2,'mm'),
-                           show.legend = F,
-                           size = 3) +
+  # ggrepel::geom_text_repel(data = op_plot2 %>% filter(scenario != 'planned'),aes(x = ic, y = ci, label = lab, color = fill),force = 1, direction = 'both',
+  #                          max.iter = 1000000, max.overlaps = 100,
+  #                          box.padding = unit(5,'mm'),
+  #                          point.padding = unit(2,'mm'),
+  #                          show.legend = F,
+  #                          size = 3) +
   scale_fill_manual(values = fills) +
   scale_color_manual(values = rep('red',2),na.value = 'black') +
   scale_alpha_manual(values = c(0.3,1)) +
@@ -402,14 +414,26 @@ p_pareto_mit <- ggplot() +
 p_pareto_mit
 
 
-
+write.csv(op_plot,'tabs/figure2_data.csv',row.names = F)
 
 
 # SPATIA DATA
 # dams
-dams_sp <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
-  st_transform(4326) %>%
-  filter(Code %in% dams_data$Code)
+# dams_sp <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
+#   st_transform(4326) %>%
+  # filter(Code %in% dams_data$Code)
+
+# adjust status:
+dams_status_adjusted <- read.csv('data/dams_adjusted_year.csv')
+
+# simplify dams table for fitness function
+dams_sp <- left_join(
+  read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
+    st_transform(4326) %>%
+    filter(Code %in% dams_data$Code) %>% select(-Status),
+  dams_status_adjusted %>% select(Code, Status = 'Status_adj')
+)
+
 dams_sp$log_IC <- log10(dams_sp$InstalledC)
 dams_sp$status <- ifelse(dams_sp$Status == 'P','future','existing')
 dams_sp$country <- substr(dams_sp$Code,1,1)
@@ -471,8 +495,8 @@ levels(tplot$status) <- c("existing"  ,  "planned"   ,   "removed"   ,  "retrofi
 # fills[4] <- '#FAC42A'
 
 fills <- c(c('grey40','black'),
-           RColorBrewer::brewer.pal(4,'Greens')[3:4])
-tplot$scen <- factor(case_match(tplot$scen, 'E1' ~ 'P0', 'P1' ~ 'B1', 'M1' ~ 'SPR0', 'R1' ~ 'SPRR0'), levels = c( 'P0', 'B1', 'SPR0', 'SPRR0'))
+           RColorBrewer::brewer.pal(3,'YlGnBu')[2:3])
+tplot$scen <- factor(case_match(tplot$scen, 'E1' ~ 'S0', 'P1' ~ 'B1', 'M1' ~ 'SP0', 'R1' ~ 'SPR0'), levels = c( 'S0', 'B1', 'SP0', 'SPR0'))
 
 p_maps <- ggplot() +
   geom_sf(data = bas, color = 'white',fill='grey90') + #no border
@@ -508,6 +532,9 @@ p_maps <- ggplot() +
   )
 p_maps
 
+write.csv(tplot %>% filter(!(incl==0 & status != 'removed')) %>% as_tibble %>% select(-geom),'tabs/figure2_dataMaps.csv',row.names = F)
+ss <- tplot %>% filter(!(incl==0 & status != 'removed'))
+write_sf(obj=ss,layer='figure2_dataMaps',dsn='tabs/figure2_dataMaps.shp',delete_layer = T)
 
 p_pareto_and_maps <- cowplot::plot_grid(
   cowplot::plot_grid(
@@ -544,7 +571,7 @@ p_pareto_and_maps <- cowplot::plot_grid(
 
 
 
-ggsave('figs/fig2.pdf',p_pareto_and_maps,
+ggsave('figs/fig2_paretos_and_maps.pdf',p_pareto_and_maps,
        width = 160, height = 170, units = 'mm', scale = 1.1)
 
 # legend
@@ -711,9 +738,12 @@ incl_R <- calc_incl(readRDS(paste0('proc/LMB_nsga2_removal_bin30_ic_ci_gen',gen_
                     dams_data$Code[dams_data$status == 'future'])
 
 # master incl table
-dams_sp <- read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
-  st_transform(4326) %>%
-  filter(Code %in% dams_data$Code)
+dams_sp <- left_join(
+  read_sf('data/Dams Mekong MRC and PRC.gpkg') %>%
+    st_transform(4326) %>%
+    filter(Code %in% dams_data$Code) %>% select(-Status),
+  dams_status_adjusted %>% select(Code, Status = 'Status_adj')
+)
 dams_sp$log_IC <- log10(dams_sp$InstalledC)
 dams_sp$status <- ifelse(dams_sp$Status == 'P','future','existing')
 
@@ -747,17 +777,18 @@ tF <- left_join(dams_sp,incl_F)
 tF$incl[tF$Code %in% ID_E] <- 2
 tF$scen <- 'Future'
 
-tR <- left_join(dams_sp,incl_R)
-tR$incl[tR$Code %in% ID_R1] <- 3
-tR$rem[tR$Code %in% ID_Rem] <- 1
-tR$status[tR$Code %in% ID_Rem] <- 'removed'
-tR$scen <- 'Removal'
-
 tM <- left_join(dams_sp,incl_M)
 tM$incl[tM$Code %in% ID_M1] <- 4
-tM$rem[tM$Code %in% ID_Mit] <- 2
+tM$rem[tM$Code %in% ID_Mit] <- 1
 # tM$status[tM$Code %in% ID_Mit] <- 'retrofitted'
 tM$scen <- 'Mitigation'
+
+tR <- left_join(dams_sp,incl_R)
+tR$incl[tR$Code %in% ID_R1] <- 3
+tR$rem[tR$Code %in% ID_Mit] <- 1
+tR$rem[tR$Code %in% ID_Rem] <- 2
+tR$status[tR$Code %in% ID_Rem] <- 'removed'
+tR$scen <- 'Removal'
 
 
 tplot <- rbind(tP,tF,tR,tM) %>% mutate(incl_prob = incl_prob*100)
@@ -789,7 +820,7 @@ levels(tplot$status) <- c("existing"  ,  "planned"  ,    "removed")
     scale_color_manual(values = c('black','red','red')) +
     guides(size='none') +
     labs(
-      fill = 'IP [%]',
+      fill = 'Incl. prob in POP [%]',
       # size = 'Inst. Cap. [MW]',
       shape = '', color = ''
     ) +
@@ -813,14 +844,14 @@ levels(tplot$status) <- c("existing"  ,  "planned"  ,    "removed")
     )
 )
 
-ggsave('figs/incl_prob_maps_scenarios.pdf',p_incl,
-       width = 180, height = 110, units = 'mm')
+ggsave('figs/fig3_incl_prob_maps_scenarios_v3.pdf',p_incl,
+       width = 180, height = 130, units = 'mm')
 
 
 
 
-
-
+# end here
+#-------------------------------------------------------------------------------
 
 
 

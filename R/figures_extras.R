@@ -16,3 +16,19 @@ bas_sr_inter <- left_join(bas,inter_basin_corr %>% select(HYBAS_ID, INTER_ID, IN
   left_join(sr_data)
 
 write_sf(bas_sr_inter,'proc/basins_mekong_spRichness_interBasins.gpkg')
+
+# save table for species
+# run beginning of optimize rmoo
+tab <- sp_data %>% group_by(binomial) %>% summarise(area = sum(SUB_AREA))
+write.csv(tab,'tabs/species_names.csv',row.names = F)
+
+# run for 40 species
+tab <- sp_data %>% group_by(binomial) %>% summarise(area = sum(SUB_AREA))
+write.csv(tab,'tabs/species_names_flagship.csv',row.names = F)
+
+# run for IUCN species
+tab <- sp_data %>% group_by(binomial) %>% summarise(area = sum(SUB_AREA))
+write.csv(tab,'tabs/species_names_endangered.csv',row.names = F)
+
+
+

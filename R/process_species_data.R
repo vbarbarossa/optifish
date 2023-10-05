@@ -86,4 +86,12 @@ sp_data <- tab %>%
 sp_data$diad <- 'f'
 sp_data$diad[sp_data$binomial %in% fishbase$binomial[fishbase$AnaCat == 'Diad.']] <- 't'
 
+# 783 species in the Mekong
+
+# filter out exclusively lentic
+sp_tr <- read.csv('data/species_traits.csv')
+sp_data <- sp_data[!sp_data$binomial %in% sp_tr$binomial[sp_tr$lentic_only == 1]]
+
+# 763 lotic species in the Mekon
+
 write.csv(sp_data,'proc/sp_data_hybas12_mekong.csv',row.names = F)
